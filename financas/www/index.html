@@ -230,6 +230,155 @@ function save(){
   scheduleSmartReminders();
 }
 
+// ═══════════════════════════════════════════════════
+// ANÁLISE TÉCNICA AUTOMÁTICA (sem IA — só matemática)
+// Funciona 100% offline após carregar dados, baseado em
+// indicadores clássicos usados por traders profissionais
+// ═══════════════════════════════════════════════════
+
+async function fetchHistoricalPrices(symbol, range='1y'){
+  // Brapi.dev — histórico de preços diários
+  try{
+    const r = await fetch(`https://brapi.dev/api/quote/${symbol}?range=${range}&interval=1d`);
+    if(!r.ok) return [];
+    const d = await r.json();
+    return (d.results?.[0]?.historicalDataPrice || []).map(x=>x.close).filter(x=>x>0);
+  }catch(e){return []}
+}
+
+function calcRSI(prices, period=14){
+  if(prices.length < period+1) return null;
+  let gains=0, losses=0;
+  for(let i=1; i<=period; i++){
+    const diff = prices[i] - prices[i-1];
+    if(diff>0) gains+=diff; else losses-=diff;
+  }
+  let avgGain = gains/period, avgLoss = losses/period;
+  for(let i=period+1; i<prices.length; i++){
+    const diff = prices[i] - prices[i-1];
+    if(diff>0){
+      avgGain = (avgGain*(period-1) + diff)/period;
+      avgLoss = (avgLoss*(period-1))/period;
+    } else {
+      avgGain = (avgGain*(period-1))/period;
+      avgLoss = (avgLoss*(period-1) - diff)/period;
+    }
+  }
+  if(avgLoss===0) return 100;
+  return 100 - (100/(1 + avgGain/avgLoss));
+}
+
+function calcMA(prices, period){
+  if(prices.length < period) return null;
+  const slice = prices.slice(-period);
+  return slice.reduce((a,b)=>a+b,0)/period;
+}
+
+function calcVolatility(prices, period=20){
+  if(prices.length < period+1) return null;
+  const returns = [];
+  for(let i=1; i<prices.length; i++) returns.push((prices[i]-prices[i-1])/prices[i-1]);
+  const slice = returns.slice(-period);
+  const mean = slice.reduce((a,b)=>a+b,0)/slice.length;
+  const variance = slice.reduce((s,r)=>s+(r-mean)**2,0)/slice.length;
+  return Math.sqrt(variance) * Math.sqrt(252) * 100; // annualized %
+}
+
+async function analyzeAsset(symbol){
+  const prices = await fetchHistoricalPrices(symbol);
+  if(prices.length < 50) return null;
+  const last = prices[prices.length-1];
+  const rsi = calcRSI(prices);
+  const ma9 = calcMA(prices, 9);
+  const ma21 = calcMA(prices, 21);
+  const ma50 = calcMA(prices, 50);
+  const ma200 = calcMA(prices, 200);
+  const ma50Prev = calcMA(prices.slice(0,-1), 50);
+  const ma200Prev = calcMA(prices.slice(0,-1), 200);
+  const vol = calcVolatility(prices);
+  // Performance
+  const p7 = prices.length>=7 ? ((last/prices[prices.length-7]-1)*100) : null;
+  const p30 = prices.length>=30 ? ((last/prices[prices.length-30]-1)*100) : null;
+  const p90 = prices.length>=90 ? ((last/prices[prices.length-90]-1)*100) : null;
+  // Setups detectados
+  const setups = [];
+  if(rsi!==null){
+    if(rsi<30) setups.push({t:'oversold',emoji:'📈',color:'#22c55e',
+      title:'Sobrevendido',
+      msg:`RSI ${rsi.toFixed(0)}. Historicamente, RSI<30 marca zona de compra, MAS pode continuar caindo. Confirme com volume + suporte técnico.`});
+    if(rsi>70) setups.push({t:'overbought',emoji:'📉',color:'#f59e0b',
+      title:'Sobrecomprado',
+      msg:`RSI ${rsi.toFixed(0)}. Historicamente, RSI>70 marca zona de realização. Tendências fortes podem continuar — não venda só por isso.`});
+  }
+  if(ma50 && ma200 && ma50Prev && ma200Prev){
+    if(ma50Prev<ma200Prev && ma50>=ma200) setups.push({t:'golden',emoji:'🌟',color:'#22c55e',
+      title:'CRUZ DOURADA',
+      msg:`MM50 cruzou MM200 pra cima HOJE. Sinal clássico de início de tendência de alta de médio/longo prazo.`});
+    if(ma50Prev>ma200Prev && ma50<=ma200) setups.push({t:'death',emoji:'💀',color:'#ef4444',
+      title:'CRUZ DA MORTE',
+      msg:`MM50 cruzou MM200 pra baixo HOJE. Sinal clássico de início de tendência de baixa. Cautela com posições compradas.`});
+  }
+  if(ma9 && ma21 && last){
+    if(last > ma9 && ma9 > ma21) setups.push({t:'trend-up',emoji:'⬆️',color:'#86efac',
+      title:'Tendência de alta curta',
+      msg:`Preço > MM9 > MM21. Momentum positivo de curto prazo.`});
+    if(last < ma9 && ma9 < ma21) setups.push({t:'trend-down',emoji:'⬇️',color:'#fca5a5',
+      title:'Tendência de baixa curta',
+      msg:`Preço < MM9 < MM21. Momentum negativo de curto prazo.`});
+  }
+  if(ma50 && last > ma50*1.15) setups.push({t:'extended',emoji:'⚠️',color:'#f59e0b',
+    title:'Esticado',
+    msg:`Preço está ${((last/ma50-1)*100).toFixed(0)}% acima da MM50. Risco de correção pra média.`});
+  if(ma50 && last < ma50*0.85) setups.push({t:'oversold-ma',emoji:'🔻',color:'#22c55e',
+    title:'Distante da média',
+    msg:`Preço está ${((last/ma50-1)*100).toFixed(0)}% abaixo da MM50. Pode haver mean reversion.`});
+  return {
+    symbol, last, rsi, ma9, ma21, ma50, ma200, vol, p7, p30, p90, setups
+  };
+}
+
+async function analyzeWatchlistAll(){
+  const out = [];
+  for(const sym of S.watchlist){
+    try{
+      const r = await analyzeAsset(sym);
+      if(r) out.push(r);
+    }catch(e){console.warn('analyze',sym,e)}
+  }
+  return out;
+}
+
+// Salva a última análise técnica feita
+S.lastTechAnalysis = LS.get('lastTechAnalysis', {ts:0, results:[]});
+
+async function runTechAnalysis(){
+  S.aiLoading = true; render();
+  showToast('🔬 Analisando watchlist...');
+  const results = await analyzeWatchlistAll();
+  S.lastTechAnalysis = {ts:Date.now(), results};
+  LS.set('lastTechAnalysis', S.lastTechAnalysis);
+  S.aiLoading = false;
+  showToast(`✅ ${results.length} ativos analisados, ${results.reduce((s,r)=>s+r.setups.length,0)} setups encontrados`);
+  render();
+}
+
+// ─── Auto-refresh quando a aba Mercado está aberta ───
+let _autoRefreshTimer = null;
+function startAutoRefresh(){
+  if(_autoRefreshTimer) return;
+  _autoRefreshTimer = setInterval(()=>{
+    if(S.tab===6){ // só na aba Mercado
+      fetchMarket(true);
+    } else if(S.tab===7 && S.agenteSub==='signals'){
+      runTechAnalysis();
+    } else {
+      // parou de olhar, cancela
+      clearInterval(_autoRefreshTimer);
+      _autoRefreshTimer = null;
+    }
+  }, 120_000); // 2 minutos
+}
+
 // ─── TradingView widgets (mesmos da XP/Itaú/BTG) ───
 function injectTV(containerId, scriptSrc, config){
   setTimeout(()=>{
@@ -608,7 +757,7 @@ async function initNotif(){
   }
 }
 
-const NID={daily:3000, weekly:3100, lowBalance:3200, monthly:3300, savings:3400, morning:3500, market:3600, budgetAlert:3700, investRem:3800};
+const NID={daily:3000, weekly:3100, lowBalance:3200, monthly:3300, savings:3400, morning:3500, market:3600, budgetAlert:3700, investRem:3800, techAnalysis:3900};
 
 async function scheduleSmartReminders(){
   if(!isNative || !LocalNotifications || S.notifPerm!=='granted') return;
@@ -723,6 +872,17 @@ async function scheduleSmartReminders(){
       body:`Você tem ${fmt(saldo)} em saldo. Que tal aplicar ${fmt(saldo*0.2)} (20%)?`,
       channelId:'financas-default',
       schedule:{ on:{ weekday:6, hour:18, minute:0 }, allowWhileIdle:true }
+    });
+  }
+
+  // ─── Análise técnica diária (ter-sex, 9h30) — fala que análise tá pronta ───
+  for(const wd of [3,4,5,6]){
+    notifs.push({
+      id:NID.techAnalysis+wd,
+      title:'📡 Análise técnica disponível',
+      body:'Abra o app → Agente → 📡 Sinais pra ver setups detectados na sua watchlist.',
+      channelId:'financas-default',
+      schedule:{ on:{ weekday:wd, hour:9, minute:30 }, allowWhileIdle:true }
     });
   }
 
@@ -1335,7 +1495,12 @@ function render(){
 
   const tabs=h('div',{className:'tabs'});
   ['📊 Painel','💰 Entradas','💸 Saídas','🎯 Aquisição','📈 Investir','🏆 Metas','📰 Mercado','🤖 Agente','🔔 Bancos'+(pendentesBanco>0?' ('+pendentesBanco+')':'')].forEach((t,i)=>{
-    tabs.append(h('button',{className:'tab'+(S.tab===i?' on':''),on:{click:()=>{S.tab=i;if(i===6)fetchMarket();render()}}},t));
+    tabs.append(h('button',{className:'tab'+(S.tab===i?' on':''),on:{click:()=>{
+      S.tab=i;
+      if(i===6){fetchMarket();startAutoRefresh()}
+      if(i===7){startAutoRefresh()}
+      render();
+    }}},t));
   });
   app.append(tabs);
   const ct=h('div',{className:'ct'});app.append(ct);
@@ -1806,10 +1971,76 @@ function render(){
     // Sub-tabs
     const sub = S.agenteSub || 'ia';
     ct.append(h('div',{className:'subtabs',style:{overflowX:'auto',flexWrap:'nowrap'}},
-      ...[['ia','🤖 IA'],['chart','📊 Gráfico'],['risk','🎯 Risco'],['watch','👁️ Watch'],['diary','📒 Diário']].map(([k,l])=>
-        h('button',{className:'subtab'+(sub===k?' on':''),style:{whiteSpace:'nowrap'},on:{click:()=>{S.agenteSub=k;render()}}},l)
+      ...[['signals','📡 Sinais'],['ia','🤖 IA'],['chart','📊 Gráfico'],['risk','🎯 Risco'],['watch','👁️ Watch'],['diary','📒 Diário']].map(([k,l])=>
+        h('button',{className:'subtab'+(sub===k?' on':''),style:{whiteSpace:'nowrap'},on:{click:()=>{S.agenteSub=k;render();if(k==='signals'&&!S.lastTechAnalysis.ts)runTechAnalysis()}}},l)
       )
     ));
+
+    // ─── Sinais (análise técnica automática SEM IA) ───
+    if(sub==='signals'){
+      ct.append(h('div',{className:'card'},
+        h('h3',null,'📡 Análise Técnica Automática'),
+        h('p',{style:{fontSize:'11px',color:'var(--text3)',marginBottom:'10px',lineHeight:'1.5'}},
+          'Funciona SEM IA. Baseado em RSI, médias móveis (9/21/50/200) e cruzamentos clássicos — mesma matemática usada por traders profissionais. ',
+          h('b',null,'Detecta automaticamente:'),' sobrevendido, sobrecomprado, cruz dourada/cruz da morte, tendências de curto prazo, ativos esticados.'
+        ),
+        h('div',{style:{fontSize:'10px',color:'var(--text3)',marginBottom:'10px'}},
+          'Última análise: ',S.lastTechAnalysis.ts ? new Date(S.lastTechAnalysis.ts).toLocaleString('pt-BR') : 'nunca'
+        ),
+        h('button',{className:'btn btn-g',style:{width:'100%',padding:'12px'},on:{click:runTechAnalysis}},
+          S.aiLoading?'⏳ Analisando...':'🔬 Rodar Análise Técnica Completa'
+        )
+      ));
+
+      const results = S.lastTechAnalysis.results || [];
+      if(results.length){
+        // Setups encontrados (resumo no topo)
+        const allSetups = results.flatMap(r=>r.setups.map(s=>({...s, symbol:r.symbol, price:r.last})));
+        if(allSetups.length){
+          const c = h('div',{className:'card',style:{border:'2px solid #22c55e'}},
+            h('h3',null,'🎯 Setups Detectados ('+allSetups.length+')')
+          );
+          allSetups.forEach(s=>{
+            c.append(h('div',{style:{padding:'10px',borderRadius:'10px',background:'var(--card2)',marginBottom:'6px',borderLeft:'4px solid '+s.color}},
+              h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'4px'}},
+                h('div',null,
+                  h('span',{style:{fontSize:'16px',marginRight:'6px'}},s.emoji),
+                  h('b',null,s.symbol),
+                  h('span',{style:{fontSize:'11px',color:'var(--text3)',marginLeft:'6px'}},'R$ '+(s.price||0).toFixed(2))
+                ),
+                h('span',{className:'pill',style:{background:s.color+'33',color:s.color}},s.title)
+              ),
+              h('div',{style:{fontSize:'12px',color:'var(--text2)',lineHeight:'1.5'}},s.msg)
+            ));
+          });
+          ct.append(c);
+        } else {
+          ct.append(h('div',{className:'card empty'},'Nenhum setup forte detectado agora. Mercado em estado neutro — segue a observação.'));
+        }
+
+        // Detalhes técnicos de cada ativo
+        const dc = h('div',{className:'card'},h('h3',null,'📊 Indicadores por Ativo'));
+        results.forEach(r=>{
+          const rsiC = r.rsi<30?'#22c55e':r.rsi>70?'#ef4444':'#94a3b8';
+          dc.append(h('div',{style:{padding:'10px',background:'var(--card2)',borderRadius:'10px',marginBottom:'6px'}},
+            h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:'6px'}},
+              h('b',null,r.symbol),
+              h('span',{style:{fontWeight:'700'}},'R$ '+(r.last||0).toFixed(2))
+            ),
+            h('div',{style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'4px',fontSize:'10px'}},
+              h('div',null,h('div',{style:{color:'var(--text3)'}},'RSI'),h('b',{style:{color:rsiC}},r.rsi?r.rsi.toFixed(0):'-')),
+              h('div',null,h('div',{style:{color:'var(--text3)'}},'7d'),h('b',{style:{color:r.p7>=0?'#22c55e':'#ef4444'}},r.p7?(r.p7>=0?'+':'')+r.p7.toFixed(1)+'%':'-')),
+              h('div',null,h('div',{style:{color:'var(--text3)'}},'30d'),h('b',{style:{color:r.p30>=0?'#22c55e':'#ef4444'}},r.p30?(r.p30>=0?'+':'')+r.p30.toFixed(1)+'%':'-')),
+              h('div',null,h('div',{style:{color:'var(--text3)'}},'Vol'),h('b',null,r.vol?r.vol.toFixed(0)+'%':'-'))
+            ),
+            h('div',{style:{fontSize:'10px',color:'var(--text3)',marginTop:'4px'}},
+              'MM9 ',(r.ma9||0).toFixed(2),' · MM21 ',(r.ma21||0).toFixed(2),' · MM50 ',(r.ma50||0).toFixed(2),' · MM200 ',(r.ma200||0).toFixed(2)
+            )
+          ));
+        });
+        ct.append(dc);
+      }
+    }
 
     // ─── Gráfico TradingView (NOVO) ───
     if(sub==='chart'){
