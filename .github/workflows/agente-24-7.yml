@@ -13,7 +13,12 @@ on:
   schedule:
     # A cada 15 minutos
     - cron: '*/15 * * * *'
-  workflow_dispatch:  # Permite rodar manualmente
+  workflow_dispatch:  # Permite rodar manualmente via UI
+  push:
+    # Dispara também em qualquer push que mude o worker ou esse workflow
+    paths:
+      - 'worker/**'
+      - '.github/workflows/agente-24-7.yml'
 
 # Garante que não rode múltiplas execuções em paralelo
 concurrency:
