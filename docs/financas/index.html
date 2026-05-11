@@ -102,6 +102,16 @@ button{font-family:inherit;cursor:pointer;border:none;outline:none;transition:al
 .chart-wrap{position:relative;height:240px;margin:8px 0}
 .chart-wrap.small{height:200px}
 .refresh-btn{padding:8px 14px;border-radius:10px;font-size:11px;font-weight:700;background:var(--bg);color:var(--text2);border:1px solid var(--border)}
+.subtabs{display:flex;gap:4px;background:var(--bg);padding:4px;border-radius:12px;margin-bottom:12px}
+.subtab{flex:1;padding:8px 6px;border-radius:8px;font-size:11px;font-weight:700;text-align:center;color:var(--text3);background:transparent;border:none}
+.subtab.on{background:var(--accent);color:#052e16}
+.ai-output{background:var(--bg);padding:12px;border-radius:10px;font-size:13px;line-height:1.55;white-space:pre-wrap;max-height:480px;overflow-y:auto;border:1px solid var(--border)}
+.ai-output strong{color:#22c55e}
+.kpi{background:var(--bg);padding:10px;border-radius:10px;text-align:center}
+.kpi .v{font-size:18px;font-weight:800;margin:2px 0}
+.kpi .l{font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase}
+.alert-row{display:flex;align-items:center;gap:8px;padding:8px;background:var(--card2);border-radius:8px;margin-bottom:6px;font-size:12px}
+.diary-row{padding:10px;background:var(--card2);border-radius:10px;margin-bottom:6px;border-left:3px solid}
 </style>
 </head>
 <body>
@@ -186,7 +196,7 @@ let S={
   newS:{desc:'',data:'',cat:'',valor:'',forma:'',status:'Não Pago',obs:''},
   newM:{meta:'',tipo:'',prazo:'',valorMeta:'',valorReal:'',status:'Em Andamento'},
   importTxt:'',
-  importPreview:null,    // {entradas:[], saidas:[]}
+  importPreview:null,
   importFileName:'',
   sheetsURL: LS.get('sheetsURL',''),
   trello: LS.get('trello',{key:'',token:'',boardId:''}),
@@ -195,13 +205,197 @@ let S={
   notifPerm:'default',
   market: LS.get('market',{ts:0, indices:[], stocks:[], news:[]}),
   marketLoading: false,
-  perfilInv: LS.get('perfilInv','moderado'), // conservador/moderado/agressivo
-  charts:{}
+  perfilInv: LS.get('perfilInv','moderado'),
+  charts:{},
+  // ─── AGENTE ───
+  watchlist: LS.get('watchlist',['PETR4','VALE3','BBAS3','BTC','USD-BRL']),
+  alerts: LS.get('alerts',[]),
+  diary: LS.get('diary',[]),
+  deepseekKey: LS.get('deepseekKey',''),
+  aiAnalysis: LS.get('aiAnalysis',{ts:0,text:''}),
+  aiLoading: false,
+  agenteSub: 'ia',
+  riskCalc:{capital:10000,entry:30,stop:28.5,target:35,riskPct:2},
+  newDiary:{data:'',symbol:'',side:'buy',entry:'',stop:'',target:'',size:'',exit:'',notes:''}
 };
 
 function save(){
-  ['ent','sai','aquisicao','aquisHist','invPct','inv','metas','sheetsURL','trello','market','perfilInv'].forEach(k=>LS.set(k,S[k]));
+  ['ent','sai','aquisicao','aquisHist','invPct','inv','metas','sheetsURL','trello','market','perfilInv','watchlist','alerts','diary','deepseekKey','aiAnalysis'].forEach(k=>LS.set(k,S[k]));
   scheduleSmartReminders();
+}
+
+// ─── AGENTE FINANCEIRO ───
+
+// Calculadora de posição 2% rule (Van Tharp / Mark Douglas)
+function calcPositionSize(capital, entry, stop, riskPct){
+  const cap = parseFloat(capital)||0;
+  const e = parseFloat(entry)||0;
+  const s = parseFloat(stop)||0;
+  const r = parseFloat(riskPct)||2;
+  if(cap<=0 || e<=0 || s<=0) return null;
+  const riskAmount = cap * (r/100);
+  const riskPerUnit = Math.abs(e - s);
+  if(riskPerUnit === 0) return null;
+  const size = Math.floor(riskAmount / riskPerUnit);
+  const totalCost = size * e;
+  return {size, riskAmount, riskPerUnit, totalCost};
+}
+
+// Fetch preços da watchlist via Brapi
+async function fetchWatchlist(){
+  if(!S.watchlist.length) return [];
+  try{
+    // separa stocks/indices vs crypto vs câmbio
+    const stocks=[], cryptos=[], currencies=[];
+    for(const sym of S.watchlist){
+      if(/^(BTC|ETH|SOL|ADA|XRP|DOGE|BNB|MATIC)$/i.test(sym)) cryptos.push(sym.toUpperCase());
+      else if(/^(USD|EUR|GBP|JPY|ARS)-?BRL$|^BRL-?/i.test(sym)) currencies.push(sym.toUpperCase().replace(/-?BRL/i,'-BRL'));
+      else stocks.push(sym.toUpperCase());
+    }
+    const results=[];
+    if(stocks.length){
+      try{
+        const r=await fetch(`https://brapi.dev/api/quote/${stocks.join(',')}?range=1d`);
+        const d=r.ok?await r.json():{};
+        for(const it of (d.results||[])) results.push({symbol:it.symbol,name:it.shortName||it.symbol,price:it.regularMarketPrice,chg:it.regularMarketChangePercent||0,type:'stock'});
+      }catch(e){}
+    }
+    for(const c of cryptos){
+      try{
+        const r=await fetch(`https://brapi.dev/api/v2/crypto?coin=${c}&currency=BRL`);
+        const d=r.ok?await r.json():{};
+        const coin=(d.coins||[])[0];
+        if(coin) results.push({symbol:c,name:'Cripto '+c,price:coin.regularMarketPrice,chg:coin.regularMarketChangePercent||0,type:'crypto'});
+      }catch(e){}
+    }
+    for(const cur of currencies){
+      try{
+        const r=await fetch(`https://brapi.dev/api/v2/currency?currency=${cur}`);
+        const d=r.ok?await r.json():{};
+        const c=(d.currency||[])[0];
+        if(c) results.push({symbol:cur,name:cur,price:parseFloat(c.bidPrice),chg:parseFloat(c.bidVariation)||0,type:'currency'});
+      }catch(e){}
+    }
+    return results;
+  }catch(e){console.error(e);return []}
+}
+
+// Checa alertas — chamado quando app abre
+async function checkPriceAlerts(){
+  if(!S.alerts.length || !isNative || !LocalNotifications) return;
+  const prices = await fetchWatchlist();
+  const map={}; for(const p of prices) map[p.symbol]=p.price;
+  for(const a of S.alerts){
+    if(a.triggered) continue;
+    const cur = map[a.symbol];
+    if(cur==null) continue;
+    const target=parseFloat(a.target)||0;
+    const hit = (a.op==='above' && cur>=target) || (a.op==='below' && cur<=target);
+    if(hit){
+      a.triggered=true;
+      a.triggeredAt=Date.now();
+      try{
+        await LocalNotifications.schedule({notifications:[{
+          id: 5000+Math.floor(Math.random()*10000),
+          title:'🚨 Alerta: '+a.symbol,
+          body:`${a.symbol} ${a.op==='above'?'subiu acima de':'caiu abaixo de'} R$${target.toFixed(2)}. Atual: R$${cur.toFixed(2)}`,
+          channelId:'financas-default',
+          schedule:{at: new Date(Date.now()+5000)}
+        }]});
+      }catch(e){}
+    }
+  }
+  save();
+}
+
+// Estatísticas do diário de operações
+function diaryStats(){
+  const closed = S.diary.filter(d=>d.exit && d.entry);
+  if(!closed.length) return null;
+  const ops = closed.map(d=>{
+    const e=parseFloat(d.entry), x=parseFloat(d.exit), sz=parseFloat(d.size)||1, st=parseFloat(d.stop)||e;
+    const pnl = d.side==='buy' ? (x-e)*sz : (e-x)*sz;
+    const risk = Math.abs(e-st)*sz;
+    const R = risk>0 ? pnl/risk : 0;
+    return {pnl, R, win: pnl>0};
+  });
+  const wins = ops.filter(o=>o.win).length;
+  const losses = ops.filter(o=>!o.win && o.pnl<0).length;
+  const winRate = ops.length>0 ? (wins/ops.length*100) : 0;
+  const totalPnL = ops.reduce((s,o)=>s+o.pnl,0);
+  const avgR = ops.reduce((s,o)=>s+o.R,0)/ops.length;
+  const bigWin = Math.max(...ops.map(o=>o.pnl), 0);
+  const bigLoss = Math.min(...ops.map(o=>o.pnl), 0);
+  // Drawdown simulado (max queda acumulada)
+  let acc=0, peak=0, maxDD=0;
+  for(const o of ops){ acc+=o.pnl; if(acc>peak)peak=acc; if(peak-acc>maxDD)maxDD=peak-acc; }
+  return {total:ops.length, wins, losses, winRate, totalPnL, avgR, bigWin, bigLoss, maxDD};
+}
+
+// Análise IA via DeepSeek (chamada sob demanda)
+async function callDeepSeek(){
+  if(!S.deepseekKey){ showToast('Configure sua API key da DeepSeek primeiro'); return; }
+  S.aiLoading=true; render();
+  try{
+    // Contexto rico: dados do usuário + mercado atual
+    const tE=tot(S.ent), tS=tot(S.sai), saldo=tE-tS;
+    const plan=getAllocationPlan();
+    const watch = await fetchWatchlist();
+    const ds = diaryStats();
+    const context = `
+DADOS DO USUÁRIO (controle financeiro pessoal):
+- Receitas mês: R$ ${tE.toFixed(2)}
+- Despesas mês: R$ ${tS.toFixed(2)}
+- Saldo: R$ ${saldo.toFixed(2)}
+- Perfil de risco: ${S.perfilInv}
+- Investido até hoje: R$ ${tInv().toFixed(2)}
+
+MERCADO HOJE:
+${(S.market.indices||[]).map(i=>`- ${i.name}: R$ ${(i.price||0).toFixed(2)} (${i.chg>=0?'+':''}${i.chg.toFixed(2)}%)`).join('\n')}
+
+WATCHLIST:
+${watch.map(w=>`- ${w.symbol}: R$ ${(w.price||0).toFixed(2)} (${w.chg>=0?'+':''}${w.chg.toFixed(2)}%)`).join('\n')}
+
+${ds?`HISTÓRICO DO TRADER:
+- Operações: ${ds.total} (${ds.wins} ganhos, ${ds.losses} perdas)
+- Win rate: ${ds.winRate.toFixed(1)}%
+- Resultado líquido: R$ ${ds.totalPnL.toFixed(2)}
+- R-multiple médio: ${ds.avgR.toFixed(2)}
+- Drawdown máximo: R$ ${ds.maxDD.toFixed(2)}`:''}`;
+
+    const messages = [
+      {role:'system',content:`Você é um analista educacional de mercado financeiro brasileiro, sério e sem hype. Suas regras:
+1. NUNCA dê recomendação direta de compra/venda específica
+2. Sempre baseie em fatos: dados históricos, regras de gestão de risco (2% por trade, risco/retorno mínimo 1:2)
+3. Quando comentar tendência, mencione múltiplos cenários (alta/baixa/lateral) com probabilidades aproximadas
+4. Sempre lembre que mercado é incerto e nenhuma análise garante resultado
+5. Foque em educação: explique POR QUÊ certos números/sinais são relevantes
+6. Use markdown simples (negrito com **)
+7. Responda em português brasileiro, direto ao ponto, máximo 500 palavras
+8. Estruture: Contexto Atual / Pontos de Atenção / Sugestões de Estudo
+9. Se notar problema na situação financeira (saldo negativo, gastos altos, etc), priorize alertar sobre isso antes de falar de investimento`},
+      {role:'user',content:`Analise minha situação financeira e o mercado hoje. Me dê uma visão profissional, educacional, considerando meu perfil ${S.perfilInv}. Dados:\n\n${context}`}
+    ];
+
+    const res = await fetch('https://api.deepseek.com/v1/chat/completions',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+S.deepseekKey},
+      body:JSON.stringify({model:'deepseek-chat',messages,max_tokens:1500,temperature:0.7})
+    });
+    if(!res.ok){
+      const err = await res.text();
+      throw new Error('API erro '+res.status+': '+err.slice(0,200));
+    }
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content || 'Sem resposta';
+    S.aiAnalysis = {ts:Date.now(), text};
+    save();
+    showToast('🤖 Análise IA gerada');
+  }catch(e){
+    console.error(e);
+    showToast('Erro IA: '+e.message);
+  }
+  S.aiLoading=false; render();
 }
 
 // ─── Mercado financeiro (Brapi.dev — API pública grátis) ───
@@ -1096,7 +1290,7 @@ function render(){
   ));
 
   const tabs=h('div',{className:'tabs'});
-  ['📊 Painel','💰 Entradas','💸 Saídas','🎯 Aquisição','📈 Investir','🏆 Metas','📰 Mercado','🔔 Bancos'+(pendentesBanco>0?' ('+pendentesBanco+')':'')].forEach((t,i)=>{
+  ['📊 Painel','💰 Entradas','💸 Saídas','🎯 Aquisição','📈 Investir','🏆 Metas','📰 Mercado','🤖 Agente','🔔 Bancos'+(pendentesBanco>0?' ('+pendentesBanco+')':'')].forEach((t,i)=>{
     tabs.append(h('button',{className:'tab'+(S.tab===i?' on':''),on:{click:()=>{S.tab=i;if(i===6)fetchMarket();render()}}},t));
   });
   app.append(tabs);
@@ -1486,8 +1680,216 @@ function render(){
     }
   }
 
-  // ═══ BANCOS ═══
+  // ═══ AGENTE FINANCEIRO ═══
   if(S.tab===7){
+    ct.append(h('div',{style:{fontSize:'11px',color:'var(--text3)',marginBottom:'10px',padding:'10px',background:'rgba(245,158,11,.1)',borderRadius:'10px',border:'1px solid rgba(245,158,11,.3)'}},
+      '⚠️ ',h('b',null,'Importante:'),' este agente faz análise EDUCACIONAL baseada em dados e regras de gestão de risco. Não é recomendação de compra/venda. Nenhuma IA prevê o mercado com 100% de acerto. Use com sua cabeça.'
+    ));
+    // Sub-tabs
+    const sub = S.agenteSub || 'ia';
+    ct.append(h('div',{className:'subtabs'},
+      ...[['ia','🤖 IA'],['risk','🎯 Risco'],['watch','👁️ Watch'],['diary','📒 Diário']].map(([k,l])=>
+        h('button',{className:'subtab'+(sub===k?' on':''),on:{click:()=>{S.agenteSub=k;render()}}},l)
+      )
+    ));
+
+    // ─── IA Sub-tab ───
+    if(sub==='ia'){
+      const a=S.aiAnalysis;
+      ct.append(h('div',{className:'card'},
+        h('h3',null,'🔑 Configurar DeepSeek API'),
+        h('p',{style:{fontSize:'11px',color:'var(--text3)',marginBottom:'8px',lineHeight:'1.5'}},
+          'Crie conta grátis em ',h('a',{href:'https://platform.deepseek.com',target:'_blank',style:{color:'#3b82f6'}},'platform.deepseek.com'),
+          ', gere uma API key. Custos: ~R$0,01 por análise. Sua chave fica salva só no celular.'
+        ),
+        inp(S.deepseekKey,'sk-...',v=>{S.deepseekKey=v;save()},{type:'password',style:{marginBottom:'10px'}}),
+        h('button',{className:'btn btn-g',style:{width:'100%',padding:'12px'},on:{click:callDeepSeek}},
+          S.aiLoading?'⏳ Analisando...':'🤖 Gerar Análise IA agora'
+        )
+      ));
+      if(a.text){
+        ct.append(h('div',{className:'card'},
+          h('h3',null,'🧠 Análise (',new Date(a.ts).toLocaleString('pt-BR'),')'),
+          h('div',{className:'ai-output',innerHTML:a.text.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br>')})
+        ));
+      }
+    }
+
+    // ─── Calculadora de Risco 2% ───
+    if(sub==='risk'){
+      const c=S.riskCalc;
+      const res=calcPositionSize(c.capital,c.entry,c.stop,c.riskPct);
+      const t=parseFloat(c.target)||0, e=parseFloat(c.entry)||0, st=parseFloat(c.stop)||0;
+      const reward = Math.abs(t-e), risk = Math.abs(e-st);
+      const rr = risk>0 ? (reward/risk).toFixed(2) : '0';
+      ct.append(h('div',{className:'card'},
+        h('h3',null,'🎯 Calculadora de Risco 2%'),
+        h('p',{style:{fontSize:'12px',color:'var(--text3)',marginBottom:'10px'}},'Regra dos profissionais: NUNCA arrisque mais que 2% do capital em uma operação. App calcula o tamanho exato pra você respeitar.'),
+        h('div',{className:'row'},
+          h('div',{style:{flex:1}},h('label',{style:{fontSize:'11px',color:'var(--text3)'}},'Capital total (R$)'),inp(c.capital,'10000',v=>{S.riskCalc.capital=v;render()},{type:'number',style:{fontWeight:'700'}})),
+          h('div',{style:{flex:1}},h('label',{style:{fontSize:'11px',color:'var(--text3)'}},'% de risco'),inp(c.riskPct,'2',v=>{S.riskCalc.riskPct=v;render()},{type:'number',step:'0.5'}))
+        ),
+        h('div',{className:'row'},
+          h('div',{style:{flex:1}},h('label',{style:{fontSize:'11px',color:'var(--text3)'}},'Entrada (R$)'),inp(c.entry,'30',v=>{S.riskCalc.entry=v;render()},{type:'number',step:'0.01'})),
+          h('div',{style:{flex:1}},h('label',{style:{fontSize:'11px',color:'var(--text3)'}},'Stop Loss (R$)'),inp(c.stop,'28.5',v=>{S.riskCalc.stop=v;render()},{type:'number',step:'0.01'}))
+        ),
+        h('div',{className:'row'},
+          h('div',{style:{flex:1}},h('label',{style:{fontSize:'11px',color:'var(--text3)'}},'Alvo (R$)'),inp(c.target,'35',v=>{S.riskCalc.target=v;render()},{type:'number',step:'0.01'}))
+        )
+      ));
+      if(res){
+        ct.append(h('div',{className:'card',style:{border:'2px solid #22c55e'}},
+          h('h3',{style:{color:'#22c55e'}},'📊 Resultado'),
+          h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:'8px'}},
+            h('div',{className:'kpi'},h('div',{className:'l'},'Qtd. máxima'),h('div',{className:'v',style:{color:'#22c55e'}},res.size+'')),
+            h('div',{className:'kpi'},h('div',{className:'l'},'Custo total'),h('div',{className:'v'},fmt(res.totalCost))),
+            h('div',{className:'kpi'},h('div',{className:'l'},'Risco máximo'),h('div',{className:'v',style:{color:'#ef4444'}},fmt(res.riskAmount))),
+            h('div',{className:'kpi'},h('div',{className:'l'},'Risco/Retorno'),h('div',{className:'v',style:{color:parseFloat(rr)>=2?'#22c55e':'#f59e0b'}},'1:'+rr))
+          ),
+          h('div',{style:{marginTop:'12px',padding:'10px',background:parseFloat(rr)>=2?'rgba(34,197,94,.1)':'rgba(245,158,11,.1)',borderRadius:'8px',fontSize:'12px',lineHeight:'1.5'}},
+            parseFloat(rr)>=2
+              ? '✅ Boa relação R/R. Mesmo com 50% de acerto você seria lucrativo no longo prazo.'
+              : '⚠️ R/R abaixo de 1:2. Reconsidere — você precisa acertar muito mais que 50% pra ser lucrativo nesse trade.'
+          )
+        ));
+      }
+    }
+
+    // ─── Watchlist ───
+    if(sub==='watch'){
+      ct.append(h('div',{className:'card'},
+        h('h3',null,'👁️ Sua Watchlist'),
+        h('p',{style:{fontSize:'11px',color:'var(--text3)',marginBottom:'10px'}},'Ativos que você acompanha. Toque "🔄" pra atualizar preços via Brapi. Adicione alertas pra ser notificado quando o preço cruzar.'),
+        h('div',{className:'row'},
+          inp('','Adicionar ticker (ex: PETR4, BTC, USD-BRL)',v=>{S._newWatch=v},{}),
+          h('button',{className:'btn btn-g',style:{flex:'none',padding:'10px 16px'},on:{click:()=>{
+            const v=(S._newWatch||'').trim().toUpperCase();
+            if(v && !S.watchlist.includes(v)){S.watchlist.push(v);S._newWatch='';save();render();showToast('+ '+v)}
+          }}},'+')
+        ),
+        h('div',{style:{marginTop:'10px'}},
+          ...S.watchlist.map(sym=>h('div',{style:{display:'flex',alignItems:'center',gap:'8px',padding:'8px',background:'var(--card2)',borderRadius:'8px',marginBottom:'6px'}},
+            h('span',{style:{flex:1,fontWeight:'700',fontSize:'13px'}},sym),
+            h('button',{className:'btn',style:{padding:'6px 12px',fontSize:'11px',background:'var(--bg)',color:'var(--text2)'},on:{click:()=>{
+              const op=prompt('Avisar quando '+sym+' [above/below] R$? Digite "above 35" ou "below 28"');
+              if(op){
+                const m=op.match(/^(above|below)\s+([\d.,]+)$/i);
+                if(m){
+                  S.alerts.push({id:Date.now(),symbol:sym,op:m[1].toLowerCase(),target:parseFloat(m[2].replace(',','.')),triggered:false,createdAt:Date.now()});
+                  save();render();showToast('Alerta criado');
+                }
+              }
+            }}},'⚡'),
+            h('button',{className:'btn',style:{padding:'6px 12px',fontSize:'11px',background:'transparent',color:'var(--red)'},on:{click:()=>{
+              S.watchlist=S.watchlist.filter(s=>s!==sym);save();render();
+            }}},'✕')
+          ))
+        ),
+        h('button',{className:'btn btn-b',style:{width:'100%',marginTop:'10px',padding:'12px'},on:{click:async()=>{
+          showToast('🔄 Buscando preços...');
+          const prices = await fetchWatchlist();
+          if(prices.length){
+            ct.querySelector('.watch-prices')?.remove();
+            const w=h('div',{className:'card watch-prices'},h('h3',null,'💹 Preços agora (',new Date().toLocaleTimeString('pt-BR'),')'));
+            prices.forEach(p=>w.append(h('div',{style:{display:'flex',padding:'8px',background:'var(--card2)',borderRadius:'8px',marginBottom:'6px'}},
+              h('span',{style:{flex:1,fontWeight:'700'}},p.symbol),
+              h('span',{style:{fontWeight:'800'}},'R$ '+(p.price||0).toFixed(2)),
+              h('span',{style:{marginLeft:'10px',fontWeight:'700',color:p.chg>=0?'#22c55e':'#ef4444'}},(p.chg>=0?'▲':'▼')+(p.chg||0).toFixed(2)+'%')
+            )));
+            ct.append(w);
+            await checkPriceAlerts();
+          }
+        }}},'🔄 Atualizar preços + checar alertas')
+      ));
+      // Lista de alertas
+      if(S.alerts.length){
+        const ac=h('div',{className:'card'},h('h3',null,'🚨 Alertas Ativos ('+S.alerts.filter(a=>!a.triggered).length+')'));
+        S.alerts.slice().reverse().forEach(a=>{
+          ac.append(h('div',{className:'alert-row',style:{opacity:a.triggered?'.5':'1'}},
+            h('span',{style:{flex:1}},'🔔 ',h('b',null,a.symbol),' ',a.op==='above'?'≥':'≤',' R$ ',a.target.toFixed(2)),
+            a.triggered?h('span',{style:{color:'#22c55e',fontSize:'10px'}},'✓ disparou'):h('span',{style:{color:'#f59e0b',fontSize:'10px'}},'⏳ ativo'),
+            h('button',{style:{background:'transparent',color:'var(--red)',fontSize:'12px'},on:{click:()=>{
+              S.alerts=S.alerts.filter(x=>x.id!==a.id);save();render();
+            }}},'✕')
+          ));
+        });
+        ct.append(ac);
+      }
+    }
+
+    // ─── Diário de Operações ───
+    if(sub==='diary'){
+      const stats=diaryStats();
+      if(stats){
+        ct.append(h('div',{className:'card',style:{border:'2px solid #a855f7'}},
+          h('h3',{style:{color:'#a855f7'}},'📊 Suas Estatísticas Reais'),
+          h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:'8px'}},
+            h('div',{className:'kpi'},h('div',{className:'l'},'Win Rate'),h('div',{className:'v',style:{color:stats.winRate>=50?'#22c55e':'#ef4444'}},stats.winRate.toFixed(1)+'%')),
+            h('div',{className:'kpi'},h('div',{className:'l'},'P&L Total'),h('div',{className:'v',style:{color:stats.totalPnL>=0?'#22c55e':'#ef4444'}},fmt(stats.totalPnL))),
+            h('div',{className:'kpi'},h('div',{className:'l'},'R-Multiple médio'),h('div',{className:'v'},stats.avgR.toFixed(2)+'R')),
+            h('div',{className:'kpi'},h('div',{className:'l'},'Drawdown máx'),h('div',{className:'v',style:{color:'#ef4444'}},fmt(stats.maxDD)))
+          ),
+          h('div',{style:{marginTop:'10px',fontSize:'11px',color:'var(--text3)',padding:'8px',background:'var(--bg)',borderRadius:'8px'}},
+            stats.totalPnL>=0 && stats.avgR>=0.5
+              ? '✅ Você está lucrativo! Mantenha disciplina + 2% por trade.'
+              : stats.totalPnL<0 && stats.winRate<40
+                ? '⚠️ Win rate baixo e P&L negativo. Revise estratégia ou pause e estude antes de continuar.'
+                : '📈 Resultados em desenvolvimento. Continue registrando — mínimo 20 trades pra estatística virar significativa.'
+          )
+        ));
+      } else {
+        ct.append(h('div',{className:'card empty'},'Nenhuma operação fechada ainda. Registre suas operações abaixo pra ver estatísticas.'));
+      }
+      // Form add
+      const n=S.newDiary;
+      ct.append(h('div',{className:'card'},
+        h('h3',null,'➕ Registrar Operação'),
+        h('div',{className:'row'},inp(n.data,'',v=>{S.newDiary.data=v},{type:'date'}),inp(n.symbol,'Símbolo (PETR4)',v=>{S.newDiary.symbol=v})),
+        h('div',{className:'row'},
+          h('button',{style:{flex:1,padding:'10px',borderRadius:'8px',fontWeight:'700',background:n.side==='buy'?'#22c55e':'var(--bg2)',color:n.side==='buy'?'#052e16':'var(--text3)',border:'none'},on:{click:()=>{S.newDiary.side='buy';render()}}},'📈 Compra'),
+          h('button',{style:{flex:1,padding:'10px',borderRadius:'8px',fontWeight:'700',background:n.side==='sell'?'#ef4444':'var(--bg2)',color:n.side==='sell'?'#fff':'var(--text3)',border:'none'},on:{click:()=>{S.newDiary.side='sell';render()}}},'📉 Venda')
+        ),
+        h('div',{className:'row'},inp(n.entry,'Entrada',v=>{S.newDiary.entry=v},{type:'number',step:'0.01'}),inp(n.stop,'Stop',v=>{S.newDiary.stop=v},{type:'number',step:'0.01'})),
+        h('div',{className:'row'},inp(n.target,'Alvo',v=>{S.newDiary.target=v},{type:'number',step:'0.01'}),inp(n.size,'Quantidade',v=>{S.newDiary.size=v},{type:'number'})),
+        h('div',{className:'row'},inp(n.exit,'Saída (deixe vazio se aberta)',v=>{S.newDiary.exit=v},{type:'number',step:'0.01'})),
+        inp(n.notes,'Notas (estratégia, setup, lições)',v=>{S.newDiary.notes=v}),
+        h('button',{className:'btn btn-g',style:{width:'100%',marginTop:'10px',padding:'12px'},on:{click:()=>{
+          if(!S.newDiary.symbol || !S.newDiary.entry) return showToast('Símbolo e entrada são obrigatórios');
+          S.diary.push({...S.newDiary,id:++uid});
+          S.newDiary={data:'',symbol:'',side:'buy',entry:'',stop:'',target:'',size:'',exit:'',notes:''};
+          save();render();showToast('Operação registrada');
+        }}},'Salvar Operação')
+      ));
+      // Lista
+      if(S.diary.length){
+        const lc=h('div',{className:'card'},h('h3',null,'📋 Histórico ('+S.diary.length+' ops)'));
+        S.diary.slice().reverse().forEach(d=>{
+          const open = !d.exit;
+          const pnl = !open ? (d.side==='buy'?(parseFloat(d.exit)-parseFloat(d.entry)):(parseFloat(d.entry)-parseFloat(d.exit)))*(parseFloat(d.size)||1) : 0;
+          const c = open?'#f59e0b':(pnl>=0?'#22c55e':'#ef4444');
+          lc.append(h('div',{className:'diary-row',style:{borderLeftColor:c}},
+            h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:'4px'}},
+              h('div',null,
+                h('b',null,d.symbol),' ',
+                h('span',{style:{fontSize:'10px',color:'var(--text3)'}},d.side==='buy'?'📈 LONG':'📉 SHORT'),' · ',
+                h('span',{style:{fontSize:'10px',color:'var(--text3)'}},d.data||'')
+              ),
+              h('div',{style:{textAlign:'right'}},
+                h('div',{style:{fontWeight:'800',color:c}},open?'⏳ ABERTA':fmt(pnl)),
+                h('button',{style:{fontSize:'10px',background:'transparent',color:'var(--red)'},on:{click:()=>{S.diary=S.diary.filter(x=>x.id!==d.id);save();render()}}},'excluir')
+              )
+            ),
+            h('div',{style:{fontSize:'11px',color:'var(--text2)'}},'E: R$'+d.entry+' · S: R$'+d.stop+' · A: R$'+(d.target||'?')+' · Q: '+(d.size||'?')+(d.exit?' · Saída: R$'+d.exit:'')),
+            d.notes?h('div',{style:{fontSize:'11px',color:'var(--text3)',marginTop:'4px',fontStyle:'italic'}},'"'+d.notes+'"'):null
+          ));
+        });
+        ct.append(lc);
+      }
+    }
+  }
+
+  // ═══ BANCOS ═══
+  if(S.tab===8){
     if(!isNative){
       ct.append(h('div',{className:'banner warn'},
         'Esta tela só funciona no APK Android. No navegador / iOS PWA não dá pra ler notificações dos apps de banco.'));
