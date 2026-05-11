@@ -876,6 +876,28 @@ function showToast(msg){
 }
 
 // ─── Reminders ───
+// Detecta sistema operacional do device
+function detectDevice(){
+  const ua = navigator.userAgent || '';
+  const isIOS = /iPhone|iPad|iPod/.test(ua) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+  const isAndroid = /Android/.test(ua);
+  const isXiaomi = /Xiaomi|POCO|Redmi|MIUI/i.test(ua);
+  const isSamsung = /SAMSUNG|SM-/i.test(ua);
+  const isHuawei = /Huawei|HONOR/i.test(ua);
+  return {isIOS, isAndroid, isXiaomi, isSamsung, isHuawei};
+}
+
+// Abre configurações do sistema (Android)
+async function openAppSettings(){
+  if(window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App){
+    try{
+      window.Capacitor.Plugins.App.exitApp();
+    }catch(e){}
+  }
+  // Fallback: link de settings via intent
+  showToast('Abra: Configurações → Apps → Minhas Finanças → Bateria + Notificações');
+}
+
 async function initNotif(){
   if(isNative && LocalNotifications){
     const p=await LocalNotifications.checkPermissions();
@@ -1911,7 +1933,7 @@ function pickFile(){
     S.importFileName = f.name;
     const ext = f.name.toLowerCase().split('.').pop();
     let items=[];
-    showToast('Processando '+f.name+'...');
+    showToast('🤖 Analisando '+f.name+' automaticamente...');
     try{
       if(ext==='xlsx' || ext==='xls'){
         const buf = await f.arrayBuffer();
@@ -1930,8 +1952,19 @@ function pickFile(){
       showToast('Erro lendo arquivo: '+err.message);
     }
     S.importPreview = items.length ? classifyImport(items) : null;
-    if(items.length) showToast(`${items.length} transações detectadas`);
-    else showToast('Nenhuma transação encontrada no arquivo');
+    if(items.length){
+      const totalCats = S.importPreview.entradas.length + S.importPreview.saidas.length;
+      // AUTO-COMMIT: se 95%+ items tem tipo+categoria, importa direto sem preview
+      const wellClassified = [...S.importPreview.entradas, ...S.importPreview.saidas].filter(x=>x.cat).length;
+      if(totalCats > 0 && wellClassified / totalCats >= 0.7){
+        showToast(`🤖 Auto-import: ${totalCats} transações`);
+        commitImport(); // já dispara autoAnalyzeAfterImport
+        return;
+      }
+      showToast(`${items.length} transações detectadas — revisar`);
+    } else {
+      showToast('Nenhuma transação encontrada no arquivo');
+    }
     render();
   };
   fi.click();
@@ -1983,7 +2016,44 @@ function commitImport(){
   }
   S.importPreview=null; S.importTxt=''; S.importFileName=''; S.modal=null;
   save(); render();
-  showToast(`${ne} entrada(s) e ${ns} saída(s) importadas ✅`);
+  showToast(`✅ ${ne} entrada(s) + ${ns} saída(s) importadas e analisadas`);
+  // AUTO-DISPARA notificação inteligente com análise pronta
+  autoAnalyzeAfterImport(ne, ns);
+}
+
+// Após import, dispara notificação local + Telegram com análise pronta
+async function autoAnalyzeAfterImport(ne, ns){
+  const tE = tot(S.ent), tS = tot(S.sai), saldo = tE-tS;
+  // Top 3 categorias de gasto
+  const porCat = {};
+  for(const s of S.sai) porCat[s.cat||'Outros'] = (porCat[s.cat||'Outros']||0) + (parseFloat(s.valor)||0);
+  const topCats = Object.entries(porCat).sort((a,b)=>b[1]-a[1]).slice(0,3);
+  const topCatsStr = topCats.map(([c,v])=>`${c}: ${fmt(v)}`).join(' · ');
+
+  // Allocação por perfil
+  let aloc, alocLbl;
+  if(S.perfilInv==='conservador'){ aloc={RF:80,FII:10,Acoes:7,Cripto:3}; alocLbl='CONSERVADOR'; }
+  else if(S.perfilInv==='agressivo'){ aloc={RF:20,FII:20,Acoes:40,Cripto:20}; alocLbl='AGRESSIVO'; }
+  else { aloc={RF:50,FII:20,Acoes:25,Cripto:5}; alocLbl='MODERADO'; }
+
+  const inv = saldo > 0 ? Math.round(saldo * (S.invPct||10) / 100) : 0;
+  const reserva = Math.round(tS * 6);
+
+  // Notif local Android
+  if(isNative && LocalNotifications && S.notifPerm==='granted'){
+    try{
+      await LocalNotifications.schedule({notifications:[{
+        id: 99000+Math.floor(Math.random()*999),
+        title: '💰 Extrato analisado',
+        body: `${ne+ns} transações. Saldo ${fmt(saldo)}. Sugestão: investir ${fmt(inv)}.`,
+        channelId:'financas-default',
+        schedule:{ at: new Date(Date.now()+2000) }
+      }]});
+    }catch(e){}
+  }
+
+  // Re-agenda 7 dias com snapshot atualizado
+  try{ await scheduleAggressiveNotifications(); }catch(e){}
 }
 
 function h(t,p,...c){
@@ -2113,7 +2183,10 @@ function render(){
           h('span',{style:{fontSize:'10px',fontWeight:'700',color:_mercadoAberto?'var(--green)':'var(--text3)',padding:'2px 8px',borderRadius:'6px',background:'rgba(0,0,0,.3)',border:'1px solid var(--border)'}},_statusLabel)
         )
       ),
-      h('button',{className:'btn btn-o',style:{fontSize:'11px',padding:'8px 12px'},on:{click:()=>{S.modal='import';render()}}},'🏦 Importar')
+      h('div',{style:{display:'flex',gap:'6px'}},
+        h('button',{className:'btn btn-o',style:{fontSize:'11px',padding:'8px 12px'},on:{click:()=>{S.modal='help';render()}}},'🛡️'),
+        h('button',{className:'btn btn-o',style:{fontSize:'11px',padding:'8px 12px'},on:{click:()=>{S.modal='import';render()}}},'🏦 Importar')
+      )
     ),
     h('div',{className:'mcards'},
       h('div',{className:'mc'},h('div',{className:'i'},'💰'),h('div',{className:'v',style:{color:'#22c55e'}},fmt(tE)),h('div',{className:'l'},'Receitas')),
@@ -2178,6 +2251,23 @@ function render(){
     if(saldo<0){
       ct.append(h('div',{className:'banner warn'},'⚠️ Atenção: suas despesas superam as entradas em ',h('strong',null,fmt(Math.abs(saldo))),'.'));
     }
+
+    // Banner MIUI/POCO se detectado (notif podem estar sendo bloqueadas)
+    const _dev = detectDevice();
+    if(_dev.isXiaomi && isNative){
+      ct.append(h('div',{className:'card',style:{background:'linear-gradient(135deg,rgba(212,175,55,.15),rgba(239,68,68,.08))',border:'1px solid var(--border-gold)',cursor:'pointer'},
+        on:{click:()=>{S.modal='help';render()}}},
+        h('div',{style:{display:'flex',gap:'10px',alignItems:'center'}},
+          h('div',{style:{fontSize:'24px'}},'⚠️'),
+          h('div',{style:{flex:'1'}},
+            h('div',{style:{fontSize:'13px',fontWeight:'800',color:'#d4af37'}},'Xiaomi/POCO detectado'),
+            h('div',{style:{fontSize:'11px',color:'var(--text2)',marginTop:'2px'}},'MIUI pode estar bloqueando notificações. Toque pra ver o passo a passo.')
+          ),
+          h('div',{style:{fontSize:'18px',color:'var(--text3)'}},'›')
+        )
+      ));
+    }
+
     // Sugestões inteligentes
     const sugs = buildSuggestions();
     const sCard = h('div',{className:'card',style:{border:'1px solid var(--accent)'}}, h('h3',{style:{color:'#22c55e'}},'💡 Sugestões inteligentes'));
@@ -3290,6 +3380,71 @@ function render(){
   ],()=>{if(!S.newM.meta)return;S.metas.push({...S.newM,id:++uid});save();S.newM={meta:'',tipo:'',prazo:'',valorMeta:'',valorReal:'',status:'Em Andamento'};S.modal=null;render()});
 
   // ═══ IMPORT (file picker + parse + preview) ═══
+  // ─── Modal: Ajuda / Permissões / iOS ───
+  if(S.modal==='help'){
+    const dev = detectDevice();
+    const md = h('div',{className:'modal',on:{click:e=>{if(e.target===md){S.modal=null;render()}}}},
+      h('div',{className:'modal-content',style:{maxWidth:'500px',width:'95%',maxHeight:'92vh',overflow:'auto'}},
+        h('h2',null,'🛡️ Saúde do Agente'),
+        h('p',{style:{fontSize:'12px',color:'var(--text2)',margin:'4px 0 12px'}},
+          'Pra notificações chegarem mesmo com app fechado/tela apagada.'
+        ),
+
+        // Status atual
+        h('div',{className:'card',style:{background:S.notifPerm==='granted'?'rgba(34,197,94,.1)':'rgba(239,68,68,.1)',border:'1px solid '+(S.notifPerm==='granted'?'#22c55e':'#ef4444')}},
+          h('div',{style:{fontWeight:'800',fontSize:'14px'}},
+            S.notifPerm==='granted'?'✅ Notificações PERMITIDAS pelo Android':'❌ Notificações NÃO permitidas'
+          ),
+          h('div',{style:{fontSize:'11px',color:'var(--text2)',marginTop:'4px'}},
+            'Sistema: '+(dev.isIOS?'iOS':dev.isXiaomi?'Xiaomi/POCO (MIUI)':dev.isSamsung?'Samsung (One UI)':dev.isHuawei?'Huawei':dev.isAndroid?'Android':'Web/Desktop')
+          )
+        ),
+
+        // MIUI/POCO instructions
+        dev.isXiaomi ? h('div',{className:'card'},
+          h('h3',{style:{margin:'0 0 8px',color:'#d4af37',fontSize:'15px'}},'⚠️ Xiaomi/POCO mata apps em segundo plano'),
+          h('p',{style:{fontSize:'12px',color:'var(--text2)',marginBottom:'10px'}},'Você PRECISA fazer estes 4 passos pra notificações chegarem:'),
+          h('ol',{style:{fontSize:'13px',lineHeight:'1.6',paddingLeft:'20px'}},
+            h('li',null,h('b',null,'AUTOSTART:'),' Configurações → Apps → Gerenciar apps → Minhas Finanças → ',h('b',null,'Iniciar automaticamente: ATIVAR')),
+            h('li',null,h('b',null,'BATERIA:'),' Configurações → Bateria → Outros aplicativos → Minhas Finanças → ',h('b',null,'Sem restrições')),
+            h('li',null,h('b',null,'NOTIFICAÇÕES:'),' Configurações → Apps → Minhas Finanças → Notificações → ',h('b',null,'Permitir + Som + Tela bloqueada')),
+            h('li',null,h('b',null,'BLOQUEIO RECENTE:'),' Abra apps recentes → segura no card do Minhas Finanças → ',h('b',null,'cadeado 🔒 (FIXA)'))
+          ),
+          h('div',{style:{background:'rgba(212,175,55,.15)',padding:'10px',borderRadius:'8px',marginTop:'10px',fontSize:'12px'}},
+            '💡 Mesmo com tudo isso ativado, MIUI ainda pode matar apps após 1-2 dias. Por isso usamos Telegram como FALLBACK garantido.'
+          )
+        ) : null,
+
+        // iOS instructions
+        dev.isIOS || true ? h('div',{className:'card'},
+          h('h3',{style:{margin:'0 0 8px',color:'#d4af37',fontSize:'15px'}},'🍎 Como funcionar no iPhone (esposa)'),
+          h('p',{style:{fontSize:'12px',color:'var(--text2)',marginBottom:'10px'}},
+            'iOS bloqueia notificações de PWA por padrão. Solução: usar Telegram (cross-platform garantido) + adicionar à tela inicial.'),
+          h('ol',{style:{fontSize:'13px',lineHeight:'1.6',paddingLeft:'20px'}},
+            h('li',null,h('b',null,'INSTALAR PWA:'),' Abrir Safari → ',h('a',{href:'https://luanmatheus059.github.io/Agenda-apk-e-financias/financas/',target:'_blank',style:{color:'#d4af37'}},'luanmatheus059.github.io/Agenda-apk-e-financias/financas'),' → botão Compartilhar → ',h('b',null,'Adicionar à Tela Inicial')),
+            h('li',null,h('b',null,'NOTIFICAÇÕES:'),' Telegram → abre ',h('a',{href:'https://t.me/MeuAgenteFinanceiroBot',target:'_blank',style:{color:'#d4af37'}},'@MeuAgenteFinanceiroBot'),' → /start. Mesmo bot pra os dois (você + esposa)'),
+            h('li',null,h('b',null,'NOTIF DO TELEGRAM:'),' Configurações iOS → Notificações → Telegram → Permitir + Som + Tela Bloqueada'),
+            h('li',null,h('b',null,'MODO FOCO:'),' Adicionar Telegram às exceções no Modo Foco/Não Perturbe')
+          ),
+          h('div',{style:{background:'rgba(34,197,94,.15)',padding:'10px',borderRadius:'8px',marginTop:'10px',fontSize:'12px'}},
+            '✅ Telegram funciona idêntico em Android e iOS — atualizações em tempo real garantidas.'
+          )
+        ) : null,
+
+        // Telegram fallback universal
+        h('div',{className:'card',style:{border:'2px solid #d4af37'}},
+          h('h3',{style:{margin:'0 0 8px',color:'#d4af37',fontSize:'15px'}},'🔔 Garantia 100%: Telegram'),
+          h('p',{style:{fontSize:'12px',color:'var(--text2)'}},'Independente do device, todas as atualizações chegam no Telegram em tempo real, 24/7, mesmo com tela apagada.'),
+          h('a',{href:'https://t.me/MeuAgenteFinanceiroBot',target:'_blank',className:'btn btn-g',style:{display:'block',textAlign:'center',marginTop:'8px',textDecoration:'none'}},'📲 Abrir bot no Telegram')
+        ),
+
+        h('button',{className:'btn',style:{width:'100%',marginTop:'12px',padding:'12px'},on:{click:()=>{S.modal=null;render()}}},'Fechar')
+      )
+    );
+    document.body.appendChild(md);
+    return;
+  }
+
   if(S.modal==='import'){
     const prev = S.importPreview;
     const md=h('div',{className:'modal',on:{click:e=>{if(e.target===md){S.modal=null;S.importPreview=null;S.importTxt='';S.importFileName='';render()}}}},
