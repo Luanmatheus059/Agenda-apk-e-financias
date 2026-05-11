@@ -2297,6 +2297,56 @@ function render(){
     ct.append(h('div',{className:'banner warn',style:{fontSize:'11px'}},
       '⚠️ ',h('b',null,'Importante:'),' análise EDUCACIONAL baseada em dados e regras matemáticas de gestão de risco. Não é recomendação. Nenhuma IA prevê mercado com 100% de acerto. Use com sua cabeça.'
     ));
+    // ─── Botão de TESTE de notificação (diagnóstico) ───
+    ct.append(h('div',{className:'card',style:{padding:'10px',background:'rgba(212,175,55,.05)',border:'1px solid var(--border-gold)'}},
+      h('div',{style:{display:'flex',gap:'8px',alignItems:'center'}},
+        h('span',{style:{fontSize:'18px'}},'🔔'),
+        h('div',{style:{flex:'1'}},
+          h('div',{style:{fontSize:'12px',fontWeight:'700'}},'Testar notificações'),
+          h('div',{style:{fontSize:'10px',color:'var(--text3)'}},'Dispara uma notificação agora pra confirmar que funciona')
+        ),
+        h('button',{className:'btn btn-o',style:{padding:'8px 14px',fontSize:'11px'},on:{click:async()=>{
+          if(!isNative || !LocalNotifications){
+            showToast('LocalNotifications não disponível (web mode)');
+            return;
+          }
+          try{
+            const perm = await LocalNotifications.checkPermissions();
+            if(perm.display !== 'granted'){
+              const req = await LocalNotifications.requestPermissions();
+              if(req.display !== 'granted'){
+                showToast('❌ Permissão negada. Vai em Configurações → Apps → Minhas Finanças → Notificações');
+                return;
+              }
+            }
+            // Cria o canal antes (garante que existe)
+            try{
+              await LocalNotifications.createChannel({
+                id:'financas-default',
+                name:'Lembretes Finanças',
+                description:'Lembretes de gastos, saldo e movimentações',
+                importance:5,
+                visibility:1,
+                vibration:true,
+                lights:true,
+                lightColor:'#d4af37'
+              });
+            }catch(e){}
+            await LocalNotifications.schedule({notifications:[{
+              id: 99999,
+              title:'🎉 Teste de Notificação',
+              body:'Se você está vendo isso, notificações estão funcionando! 🔔 O canal "Lembretes Finanças" foi criado.',
+              channelId:'financas-default',
+              schedule:{at: new Date(Date.now()+1000)}
+            }]});
+            showToast('✅ Notificação disparada! Verifique a bandeja');
+          }catch(e){
+            showToast('Erro: '+e.message);
+            console.error(e);
+          }
+        }}},'🧪 TESTAR AGORA')
+      )
+    ));
     // Sub-tabs
     const sub = S.agenteSub || 'ia';
     // sub-tabs: Sinais primeiro (era a mais útil), IA por último (opcional)
