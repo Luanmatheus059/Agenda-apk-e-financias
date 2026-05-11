@@ -1,0 +1,107 @@
+name: Build APKs (Agenda + Finanças)
+
+on:
+  push:
+    branches: ["**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.app }} APK
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [agenda, financas]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ${{ matrix.app }}/package-lock.json
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: |
+            platforms;android-34
+            build-tools;34.0.0
+            platform-tools
+
+      - name: Install npm deps
+        working-directory: ${{ matrix.app }}
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install --no-audit --no-fund
+          fi
+
+      - name: Generate Android project (cap add android)
+        working-directory: ${{ matrix.app }}
+        run: |
+          npx cap add android || echo "android already exists"
+
+      - name: Apply Android customizations
+        working-directory: ${{ matrix.app }}
+        run: |
+          set -e
+          PKG_DIR="com/luanmatheus/${{ matrix.app }}"
+          APP_NAME=$(node -e "console.log(require('./capacitor.config.json').appName)")
+          APP_ID=$(node -e "console.log(require('./capacitor.config.json').appId)")
+
+          # Overwrite AndroidManifest.xml with our customized version
+          if [ -f android-overrides/AndroidManifest.xml ]; then
+            cp android-overrides/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
+          fi
+
+          # Copy custom Java sources (plugin + service for finanças)
+          if [ -d android-overrides/java ]; then
+            mkdir -p "android/app/src/main/java/$PKG_DIR"
+            cp -rv android-overrides/java/* android/app/src/main/java/
+          fi
+
+          # Patch strings.xml app name
+          STRINGS=android/app/src/main/res/values/strings.xml
+          if [ -f "$STRINGS" ]; then
+            sed -i "s|<string name=\"app_name\">[^<]*</string>|<string name=\"app_name\">$APP_NAME</string>|g" "$STRINGS"
+            sed -i "s|<string name=\"title_activity_main\">[^<]*</string>|<string name=\"title_activity_main\">$APP_NAME</string>|g" "$STRINGS"
+          fi
+
+          # Sync Capacitor (copies www, installs Android plugins)
+          npx cap sync android
+
+      - name: Make gradlew executable
+        working-directory: ${{ matrix.app }}/android
+        run: chmod +x gradlew
+
+      - name: Build debug APK
+        working-directory: ${{ matrix.app }}/android
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Rename APK
+        working-directory: ${{ matrix.app }}/android/app/build/outputs/apk/debug
+        run: |
+          mv app-debug.apk "${{ matrix.app }}-debug.apk"
+          ls -lh
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.app }}-apk
+          path: ${{ matrix.app }}/android/app/build/outputs/apk/debug/${{ matrix.app }}-debug.apk
+          if-no-files-found: error
+          retention-days: 90

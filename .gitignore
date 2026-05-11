@@ -1,0 +1,12 @@
+node_modules/
+*/node_modules/
+*/android/.gradle/
+*/android/build/
+*/android/app/build/
+*/android/local.properties
+*/android/.idea/
+*/android/captures/
+# Capacitor regenerates these on every CI run; we don't commit them
+*/android/
+.DS_Store
+*.log
