@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<title>Meus Apps</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#0a0a0a;color:#f1f5f9;min-height:100vh}
+body{padding:24px 18px 60px;max-width:560px;margin:0 auto}
+h1{font-size:24px;font-weight:800;margin-bottom:6px}
+.sub{color:#94a3b8;font-size:13px;margin-bottom:28px}
+.app{background:linear-gradient(140deg,#1e293b,#0f172a);border:1px solid #1f2937;border-radius:18px;padding:20px;margin-bottom:18px}
+.app.green{background:linear-gradient(140deg,#14532d,#052e16);border-color:#166534}
+.app-hdr{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+.app-ico{width:60px;height:60px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:800;color:#fff;flex-shrink:0}
+.app-ico.blue{background:linear-gradient(135deg,#1e3a5f,#0f172a)}
+.app-ico.green{background:linear-gradient(135deg,#22c55e,#052e16)}
+.app-name{font-size:18px;font-weight:800}
+.app-desc{font-size:12px;color:#94a3b8;margin-top:2px}
+.section{margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,.08)}
+.section-title{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px}
+.btn{display:flex;align-items:center;gap:10px;width:100%;padding:14px 16px;border-radius:12px;font-size:14px;font-weight:700;text-decoration:none;background:#3b82f6;color:#fff;border:none;margin-bottom:8px;justify-content:center}
+.btn.green{background:#22c55e;color:#052e16}
+.btn.ghost{background:rgba(255,255,255,.07);color:#f1f5f9;border:1px solid rgba(255,255,255,.12)}
+.btn:active{transform:scale(.98)}
+.note{font-size:11px;color:#64748b;margin-top:6px;line-height:1.5}
+.steps{font-size:12px;color:#cbd5e1;line-height:1.7;padding-left:18px;margin-top:6px}
+.steps li{margin-bottom:2px}
+.footer{margin-top:32px;text-align:center;font-size:11px;color:#475569;line-height:1.6}
+.platform-tabs{display:flex;background:rgba(255,255,255,.04);border-radius:12px;padding:4px;margin-bottom:18px}
+.pt{flex:1;padding:10px;text-align:center;font-size:13px;font-weight:700;color:#94a3b8;border-radius:8px}
+.pt.on{background:#1e293b;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.warn{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);color:#fbbf24;padding:10px 12px;border-radius:10px;font-size:12px;margin-top:8px;line-height:1.5}
+.ok{background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3);color:#86efac;padding:10px 12px;border-radius:10px;font-size:12px;margin-top:8px}
+.hide{display:none}
+</style>
+</head>
+<body>
+<h1>📱 Meus Apps</h1>
+<p class="sub">Agenda e Finanças pessoais — Android instala o app, iOS adiciona à tela inicial.</p>
+
+<div class="platform-tabs">
+  <div class="pt on" data-tab="android" onclick="setTab('android')">🤖 Android</div>
+  <div class="pt" data-tab="ios" onclick="setTab('ios')">📱 iOS</div>
+  <div class="pt" data-tab="web" onclick="setTab('web')">🌐 Web</div>
+</div>
+
+<!-- ─── ANDROID ─── -->
+<div id="t-android">
+  <div class="app">
+    <div class="app-hdr">
+      <div class="app-ico blue">A</div>
+      <div><div class="app-name">📋 Minha Agenda</div><div class="app-desc">Lembretes inteligentes, semana planejada</div></div>
+    </div>
+    <a class="btn" href="./apks/minha-agenda.apk" download>⬇️ Baixar APK · 2.8 MB</a>
+    <ol class="steps">
+      <li>Toca em <b>Baixar APK</b> acima</li>
+      <li>Se aparecer "este arquivo pode prejudicar..." → <b>Baixar mesmo assim</b></li>
+      <li>Abra o `.apk` baixado → ative <b>"fontes desconhecidas"</b> pro Chrome quando pedir</li>
+      <li>Instale</li>
+    </ol>
+    <div class="warn">⚠️ Se aparecer Play Protect dizendo "App não verificado": toca em <b>Mais detalhes</b> → <b>Instalar mesmo assim</b>. É só porque não vem da Play Store — o app é seguro.</div>
+  </div>
+
+  <div class="app green">
+    <div class="app-hdr">
+      <div class="app-ico green">$</div>
+      <div><div class="app-name">💰 Minhas Finanças</div><div class="app-desc">Entradas, saídas, captura de bancos</div></div>
+    </div>
+    <a class="btn green" href="./apks/minhas-financas.apk" download>⬇️ Baixar APK · 2.9 MB</a>
+    <ol class="steps">
+      <li>Mesmo processo do APK acima</li>
+      <li>Depois de instalar: aba <b>🔔 Bancos</b> → <b>Abrir Configurações</b> → ative <b>Minhas Finanças</b> na lista de "Acesso a notificações"</li>
+      <li>Pronto. PIX, compras e transferências aparecem automaticamente.</li>
+    </ol>
+  </div>
+</div>
+
+<!-- ─── iOS ─── -->
+<div id="t-ios" class="hide">
+  <div class="warn" style="margin-bottom:14px">📌 iOS não permite instalar app fora da App Store. <b>Mas dá pra instalar como PWA</b> (Progressive Web App): funciona igual a um app nativo, com ícone na tela inicial, abre offline, recebe notificações no iOS 16.4+.</div>
+
+  <div class="app">
+    <div class="app-hdr">
+      <div class="app-ico blue">A</div>
+      <div><div class="app-name">📋 Minha Agenda</div><div class="app-desc">Abra no Safari → Compartilhar → Adicionar à Tela</div></div>
+    </div>
+    <a class="btn" href="./agenda/" target="_blank">🚀 Abrir Agenda no Safari</a>
+    <ol class="steps">
+      <li>Toca no link acima (precisa ser no <b>Safari</b>, não funciona em outro browser)</li>
+      <li>Toca no ícone <b>Compartilhar</b> (quadradinho com seta pra cima, embaixo)</li>
+      <li>Rola e toca em <b>Adicionar à Tela de Início</b></li>
+      <li>Confirma. Vai aparecer o ícone azul "A" na tela inicial.</li>
+      <li>Abra pelo ícone, não pelo Safari (assim funciona em tela cheia, sem barra do navegador)</li>
+    </ol>
+  </div>
+
+  <div class="app green">
+    <div class="app-hdr">
+      <div class="app-ico green">$</div>
+      <div><div class="app-name">💰 Minhas Finanças</div><div class="app-desc">Controle pessoal, sem captura de bancos no iOS</div></div>
+    </div>
+    <a class="btn green" href="./financas/" target="_blank">🚀 Abrir Finanças no Safari</a>
+    <ol class="steps">
+      <li>Mesmo processo: Safari → Compartilhar → Adicionar à Tela de Início</li>
+      <li>Vai aparecer o ícone verde "$" na tela.</li>
+    </ol>
+    <div class="warn">⚠️ A funcionalidade de <b>capturar notificações dos bancos</b> não existe no iOS — é restrição do próprio iOS, nenhum app conseguiria. Use a importação manual (CSV/extrato).</div>
+  </div>
+</div>
+
+<!-- ─── WEB ─── -->
+<div id="t-web" class="hide">
+  <div class="ok">Funcionam em qualquer navegador desktop ou mobile. Dados ficam só no seu dispositivo (localStorage).</div>
+  <div class="app">
+    <div class="app-hdr">
+      <div class="app-ico blue">A</div>
+      <div><div class="app-name">📋 Minha Agenda</div></div>
+    </div>
+    <a class="btn" href="./agenda/" target="_blank">Abrir Agenda</a>
+  </div>
+  <div class="app green">
+    <div class="app-hdr">
+      <div class="app-ico green">$</div>
+      <div><div class="app-name">💰 Minhas Finanças</div></div>
+    </div>
+    <a class="btn green" href="./financas/" target="_blank">Abrir Finanças</a>
+  </div>
+</div>
+
+<div class="footer">
+  Dados ficam só no dispositivo. Nenhuma informação sai daqui.<br>
+  <a href="https://github.com/Luanmatheus059/Agenda-apk-e-financias" style="color:#94a3b8">github.com/Luanmatheus059/Agenda-apk-e-financias</a>
+</div>
+
+<script>
+function setTab(t){
+  document.querySelectorAll('.pt').forEach(e=>e.classList.toggle('on', e.dataset.tab===t));
+  ['android','ios','web'].forEach(x=>document.getElementById('t-'+x).classList.toggle('hide', x!==t));
+}
+// Auto-select tab by user-agent
+const ua=navigator.userAgent;
+if(/iPhone|iPad|iPod/.test(ua)) setTab('ios');
+else if(/Android/.test(ua)) setTab('android');
+else setTab('web');
+</script>
+</body>
+</html>

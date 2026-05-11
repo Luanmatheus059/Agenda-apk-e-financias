@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Minha Agenda</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" type="image/png" href="../icons/agenda-192.png">
+<link rel="apple-touch-icon" href="../icons/agenda-180.png">
+<meta name="apple-mobile-web-app-title" content="Agenda">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+:root{--bg:#0f172a;--bg2:#1e293b;--bg3:#334155;--card:#1e293b;--card2:#273548;--text:#f1f5f9;--text2:#94a3b8;--text3:#64748b;--accent:#3b82f6;--green:#22c55e;--red:#ef4444;--orange:#f59e0b;--purple:#a855f7;--teal:#14b8a6;--border:#334155;--shadow:0 4px 20px rgba(0,0,0,.3);--radius:14px}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;padding-bottom:80px;padding-top:env(safe-area-inset-top)}
+input,select,textarea{font-family:inherit;color:var(--text);background:var(--bg2);border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;width:100%;outline:none;transition:border .2s}
+input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:30px}
+textarea{resize:vertical;min-height:70px}
+button{font-family:inherit;cursor:pointer;border:none;outline:none;transition:all .15s}
+.header{background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 100%);padding:20px 16px 16px;position:sticky;top:0;z-index:100}
+.header h1{font-size:22px;font-weight:800;letter-spacing:-.5px;display:flex;align-items:center;gap:8px}
+.header p{font-size:12px;color:var(--text2);margin-top:4px}
+.stats{display:flex;gap:8px;margin-top:14px}
+.stat{flex:1;background:var(--bg2);border-radius:12px;padding:10px 6px;text-align:center;border:1px solid var(--border)}
+.stat .n{font-size:20px;font-weight:800;margin:2px 0}
+.stat .l{font-size:9px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.tabs{display:flex;gap:6px;padding:12px 14px 0;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.tabs::-webkit-scrollbar{display:none}
+.tab{padding:8px 16px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap;background:var(--bg2);color:var(--text3);border:1px solid var(--border)}
+.tab.on{background:var(--accent);color:#fff;border-color:var(--accent);box-shadow:0 4px 15px rgba(59,130,246,.3)}
+.content{padding:12px 14px}
+.card{background:var(--card);border-radius:var(--radius);padding:14px;margin-bottom:12px;border:1px solid var(--border);animation:fadeIn .3s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.card h3{font-size:15px;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.day-hdr{display:flex;align-items:center;gap:12px;cursor:pointer;padding:4px 0}
+.day-icon{width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:#fff;flex-shrink:0}
+.badge{display:inline-block;padding:3px 10px;border-radius:10px;font-size:10px;font-weight:700;color:#fff}
+.task-row{padding:12px;border-radius:10px;margin-bottom:8px;border:1px solid var(--border);transition:all .2s}
+.task-row.done{opacity:.6;text-decoration:line-through}
+.row{display:flex;gap:8px;margin-bottom:8px}
+.row>*{flex:1}
+.btn{padding:10px 16px;border-radius:10px;font-size:13px;font-weight:700;color:#fff}
+.btn-add{width:100%;padding:12px;border-radius:12px;border:2px dashed var(--border);background:transparent;color:var(--text3);font-size:13px;font-weight:600}
+.btn-add:active{background:var(--bg2)}
+.notif-btn{background:var(--orange);padding:8px 14px;border-radius:10px;font-size:11px;font-weight:700;color:#fff}
+.notif-on{background:var(--green)}
+.prio-alta{background:rgba(239,68,68,.15);border-color:rgba(239,68,68,.3)!important}
+.prio-media{background:rgba(245,158,11,.1);border-color:rgba(245,158,11,.2)!important}
+.status-sel{display:flex;gap:6px}
+.status-sel button{flex:1;padding:7px 4px;border-radius:8px;font-size:11px;font-weight:700;background:var(--bg2);color:var(--text3);border:1.5px solid var(--border)}
+.status-sel button.on-pend{background:rgba(239,68,68,.15);color:var(--red);border-color:var(--red)}
+.status-sel button.on-prog{background:rgba(245,158,11,.15);color:var(--orange);border-color:var(--orange)}
+.status-sel button.on-done{background:rgba(34,197,94,.15);color:var(--green);border-color:var(--green)}
+.status-sel button.on-canc{background:rgba(100,116,139,.15);color:var(--text3);border-color:var(--text3)}
+.progress{height:8px;border-radius:4px;background:var(--bg);overflow:hidden;margin:6px 0}
+.progress-bar{height:100%;border-radius:4px;transition:width .5s}
+.fab{position:fixed;bottom:20px;right:16px;width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 4px 20px rgba(0,0,0,.4);z-index:50}
+.section-hdr{padding:10px 14px;border-radius:12px;margin-bottom:10px;font-weight:700;font-size:14px}
+.stars{display:flex;gap:6px;justify-content:center}
+.star{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;background:var(--bg2);color:var(--text3);border:2px solid var(--border)}
+.star.on{background:var(--orange);color:#fff;border-color:var(--orange)}
+.toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:10px 16px;border-radius:10px;font-size:12px;z-index:200;box-shadow:0 6px 20px rgba(0,0,0,.4);opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast" class="toast"></div>
+<script type="module">
+// ─── Capacitor bridge (works as native app or pure web) ───
+const isNative = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+let LocalNotifications = null;
+if (isNative && window.Capacitor && window.Capacitor.Plugins) {
+  LocalNotifications = window.Capacitor.Plugins.LocalNotifications || null;
+}
+
+const DAYS=["Segunda","Terça","Quarta","Quinta","Sexta","Sábado","Domingo"];
+const DCOL=["#3b82f6","#14b8a6","#a855f7","#f59e0b","#22c55e","#64748b","#ef4444"];
+const TIPOS=["Trabalho","Plataforma","Pessoal","Estudo","Saúde","Reunião","Admin"];
+const PRIOS=["Alta","Média","Baixa"];
+const STS=["Pendente","Em andamento","Feito","Cancelado"];
+const PROJ_STS=["Ativo","Pausado","Concluído","Cancelado"];
+const URGS=["Urgente","Importante","Normal"];
+
+const LS={
+  get(k,d){try{const v=localStorage.getItem('ag3-'+k);return v?JSON.parse(v):d}catch{return d}},
+  set(k,v){try{localStorage.setItem('ag3-'+k,JSON.stringify(v))}catch{}}
+};
+
+let state={
+  tab:0,expandDay:-1,
+  week:LS.get('week',DAYS.map(()=>Array.from({length:6},()=>({hora:'',tarefa:'',tipo:'',prio:'',status:'Pendente',notas:''})))),
+  objs:LS.get('objs',Array.from({length:6},()=>({obj:'',area:'',status:'Pendente',alcancou:''}))),
+  tasks:LS.get('tasks',Array.from({length:12},()=>({tarefa:'',dia:'',status:'Pendente',notas:''}))),
+  obrigs:LS.get('obrigs',Array.from({length:8},()=>({desc:'',dia:'',hora:'',urg:'Normal',feito:'Não'}))),
+  decs:LS.get('decs',Array.from({length:6},()=>({desc:'',contexto:'',comquem:'',resolvido:'Não'}))),
+  projs:LS.get('projs',Array.from({length:6},()=>({nome:'',etapa:'',pct:0,prox:'',status:'Ativo',bloqueio:'Não'}))),
+  rev:LS.get('rev',{bom:'',melhorar:'',aprend:'',prox:'',nota:0}),
+  notifPerm:'default'
+};
+
+function save(){
+  LS.set('week',state.week);LS.set('objs',state.objs);LS.set('tasks',state.tasks);
+  LS.set('obrigs',state.obrigs);LS.set('decs',state.decs);LS.set('projs',state.projs);LS.set('rev',state.rev);
+  scheduleSmartReminders();
+}
+
+function showToast(msg){
+  const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
+  clearTimeout(showToast._t);showToast._t=setTimeout(()=>t.classList.remove('show'),2200);
+}
+
+// ─── Notifications: web fallback + native via Capacitor ───
+async function initNotif(){
+  if(isNative && LocalNotifications){
+    const p=await LocalNotifications.checkPermissions();
+    state.notifPerm = p.display==='granted' ? 'granted' : (p.display==='denied'?'denied':'default');
+  } else if('Notification' in window){
+    state.notifPerm=Notification.permission;
+  }
+}
+
+async function reqNotif(){
+  if(isNative && LocalNotifications){
+    const p=await LocalNotifications.requestPermissions();
+    state.notifPerm=p.display==='granted'?'granted':'denied';
+    if(state.notifPerm==='granted') await scheduleSmartReminders();
+    render();
+    showToast(state.notifPerm==='granted'?'🔔 Lembretes ativados!':'Permissão negada');
+  } else if('Notification' in window){
+    const p=await Notification.requestPermission();
+    state.notifPerm=p;render();
+    if(p==='granted') startWebNotifCheck();
+  }
+}
+
+// Smart scheduler: cancels all and re-schedules based on current state.
+// Stable ids per slot let us cancel/replace cleanly.
+const NID={
+  morning:1000,        // 8h every day
+  weeklyReview:1100,   // sunday 19h
+  emptyWeek:1200,      // monday 9h if Objetivos empty
+  taskBase:2000        // 2000+dayIdx*100+taskIdx → per-task overdue alert
+};
+
+async function scheduleSmartReminders(){
+  if(!isNative || !LocalNotifications || state.notifPerm!=='granted') return;
+  try{
+    const pending = await LocalNotifications.getPending();
+    if(pending.notifications && pending.notifications.length){
+      await LocalNotifications.cancel({notifications:pending.notifications.map(n=>({id:n.id}))});
+    }
+  }catch(e){}
+
+  const notifs=[];
+
+  // 1) Lembrete matinal diário às 8h — corpo dinâmico baseado em "hoje"
+  const todayIdx=(new Date().getDay()+6)%7;
+  const todayTasks=state.week[todayIdx].filter(t=>t.tarefa);
+  const todayPend=todayTasks.filter(t=>t.status==='Pendente').length;
+  const morningBody = todayTasks.length===0
+    ? 'Nada cadastrado pra hoje. Toque pra organizar seu dia 🗓️'
+    : todayPend>0
+      ? `Você tem ${todayPend} tarefa${todayPend>1?'s':''} pendente${todayPend>1?'s':''} hoje. Bora começar!`
+      : 'Tudo planejado pra hoje. Bom dia! ☀️';
+  notifs.push({
+    id:NID.morning,
+    title:'📋 Bom dia! Sua agenda',
+    body:morningBody,
+    schedule:{ on:{ hour:8, minute:0 }, allowWhileIdle:true },
+    smallIcon:'ic_stat_icon_config_sample'
+  });
+
+  // 2) Cobrança de tarefas pendentes: 15min após a hora, hoje
+  const now=new Date();
+  state.week[todayIdx].forEach((t,ti)=>{
+    if(t.tarefa && t.hora && t.status!=='Feito' && t.status!=='Cancelado'){
+      const [hh,mm]=t.hora.split(':').map(Number);
+      if(!isNaN(hh)&&!isNaN(mm)){
+        const when=new Date();when.setHours(hh,mm+15,0,0);
+        if(when>now){
+          notifs.push({
+            id: NID.taskBase + todayIdx*100 + ti,
+            title:'⏰ Tarefa em atraso?',
+            body:`"${t.tarefa.slice(0,60)}" estava marcada pra ${t.hora}. Já fez?`,
+            schedule:{ at: when, allowWhileIdle:true }
+          });
+        }
+      }
+    }
+  });
+
+  // 3) Revisão semanal: domingo 19h
+  notifs.push({
+    id:NID.weeklyReview,
+    title:'📝 Hora da revisão semanal',
+    body:'Tira 5 minutos: o que deu certo, o que melhorar, o que aprendeu?',
+    schedule:{ on:{ weekday:1, hour:19, minute:0 }, allowWhileIdle:true } // Capacitor: 1=domingo
+  });
+
+  // 4) Alerta de aba vazia: segunda 9h se Objetivos/Projetos zerados
+  const objsFilled = state.objs.filter(o=>o.obj).length;
+  const projsFilled = state.projs.filter(p=>p.nome).length;
+  if(objsFilled===0 || projsFilled===0){
+    const faltam=[];
+    if(objsFilled===0) faltam.push('Objetivos');
+    if(projsFilled===0) faltam.push('Projetos');
+    notifs.push({
+      id:NID.emptyWeek,
+      title:'🎯 Sua semana ainda está em branco',
+      body:`Você não definiu ${faltam.join(' nem ')}. Abra o app e organize a semana.`,
+      schedule:{ on:{ weekday:2, hour:9, minute:0 }, allowWhileIdle:true } // segunda
+    });
+  }
+
+  if(notifs.length){
+    try{ await LocalNotifications.schedule({notifications:notifs}); }
+    catch(e){ console.error('schedule failed',e); }
+  }
+}
+
+// Web fallback (only browser)
+function startWebNotifCheck(){
+  setInterval(()=>{
+    const now=new Date(),h=now.getHours(),m=now.getMinutes();
+    if((h===8||h===12||h===18)&&m<5){
+      const di=(now.getDay()+6)%7;
+      const pend=state.week[di].filter(t=>t.tarefa&&t.status==='Pendente').length;
+      if(pend>0)try{new Notification('📋 Agenda',{body:`${pend} tarefa${pend>1?'s':''} pendente${pend>1?'s':''} (${DAYS[di]})!`,tag:'ag-'+h})}catch{}
+    }
+  },300000);
+}
+
+// ─── Helpers ───
+function getWeekDates(){
+  const n=new Date(),d=n.getDay(),diff=d===0?-6:1-d,m=new Date(n);m.setDate(n.getDate()+diff);
+  return Array.from({length:7},(_,i)=>{const x=new Date(m);x.setDate(m.getDate()+i);return x.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})});
+}
+const wdates=getWeekDates();
+const todayIdx=(new Date().getDay()+6)%7;
+
+function h(tag,props,...ch){
+  const el=document.createElement(tag);
+  if(props)Object.entries(props).forEach(([k,v])=>{
+    if(k==='on'&&typeof v==='object')Object.entries(v).forEach(([e,fn])=>el.addEventListener(e,fn));
+    else if(k==='style'&&typeof v==='object')Object.assign(el.style,v);
+    else if(k==='className')el.className=v;
+    else if(k==='innerHTML')el.innerHTML=v;
+    else el.setAttribute(k,v);
+  });
+  ch.flat(9).forEach(c=>{if(c!=null)el.append(typeof c==='string'||typeof c==='number'?document.createTextNode(c):c)});
+  return el;
+}
+
+function sel(val,opts,onCh,ph='—'){
+  const s=h('select',{on:{change:e=>{onCh(e.target.value);save();render()}}});
+  s.append(h('option',{value:''},ph));
+  opts.forEach(o=>{const op=h('option',{value:o},o);if(o===val)op.selected=true;s.append(op)});
+  return s;
+}
+
+function inp(val,ph,onCh,extra={}){
+  return h('input',{value:val||'',placeholder:ph,...extra,on:{input:e=>{onCh(e.target.value);save()},change:e=>{onCh(e.target.value);save()}}});
+}
+
+function statusBtns(current,onCh){
+  const d=h('div',{className:'status-sel'});
+  STS.forEach(s=>{
+    const cls=current===s?s==='Pendente'?'on-pend':s==='Em andamento'?'on-prog':s==='Feito'?'on-done':'on-canc':'';
+    d.append(h('button',{className:cls,on:{click:()=>{onCh(s);save();render()}}},
+      s==='Pendente'?'🔴':s==='Em andamento'?'🟡':s==='Feito'?'✅':'⛔',
+      ' '+s.split(' ')[0]
+    ));
+  });
+  return d;
+}
+
+function render(){
+  const app=document.getElementById('app');
+  app.innerHTML='';
+
+  const allT=state.week.flat().filter(t=>t.tarefa);
+  const feitos=allT.filter(t=>t.status==='Feito').length;
+  const pend=allT.filter(t=>t.status==='Pendente').length;
+  const todayP=state.week[todayIdx].filter(t=>t.tarefa&&t.status==='Pendente').length;
+
+  const header=h('div',{className:'header'},
+    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
+      h('div',null,
+        h('h1',null,'📋 Minha Agenda'),
+        h('p',null,`Semana: ${wdates[0]} — ${wdates[6]}`)
+      ),
+      h('button',{className:state.notifPerm==='granted'?'notif-btn notif-on':'notif-btn',on:{click:reqNotif}},
+        state.notifPerm==='granted'?'🔔 Ativo':'🔔 Ativar')
+    ),
+    h('div',{className:'stats'},
+      ...[['⏰',todayP,'Hoje','var(--orange)'],['✅',feitos,'Feitas','var(--green)'],['📌',pend,'Pendentes','var(--red)'],['📊',allT.length,'Total','var(--accent)']].map(([ic,n,l,c])=>
+        h('div',{className:'stat'},h('div',{style:{fontSize:'18px'}},ic),h('div',{className:'n',style:{color:c}},String(n)),h('div',{className:'l'},l))
+      )
+    )
+  );
+  app.append(header);
+
+  const tabs=h('div',{className:'tabs'});
+  ['📅 Semana','🎯 Objetivos','⚡ Obrigações','🚀 Projetos','📝 Revisão'].forEach((t,i)=>{
+    tabs.append(h('button',{className:'tab'+(state.tab===i?' on':''),on:{click:()=>{state.tab=i;render()}}},t));
+  });
+  app.append(tabs);
+
+  const content=h('div',{className:'content'});
+  app.append(content);
+
+  if(state.tab===0){
+    if(state.expandDay===-1) state.expandDay=todayIdx;
+    DAYS.forEach((dia,di)=>{
+      const tasks=state.week[di];
+      const filled=tasks.filter(t=>t.tarefa);
+      const done=filled.filter(t=>t.status==='Feito').length;
+      const pd=filled.filter(t=>t.status==='Pendente').length;
+      const isOpen=state.expandDay===di;
+
+      const card=h('div',{className:'card',style:{borderLeft:`3px solid ${DCOL[di]}`}});
+      const hdr=h('div',{className:'day-hdr',on:{click:()=>{state.expandDay=isOpen?-1:di;render()}}},
+        h('div',{className:'day-icon',style:{background:DCOL[di]}},dia.slice(0,3)),
+        h('div',{style:{flex:'1'}},
+          h('div',{style:{fontWeight:'700',fontSize:'15px'}},dia+(di===todayIdx?' (Hoje)':'')),
+          h('div',{style:{fontSize:'11px',color:'var(--text2)'}},wdates[di]+' · '+filled.length+' tarefa'+(filled.length!==1?'s':''))
+        ),
+        h('div',{style:{display:'flex',gap:'6px',alignItems:'center'}},
+          done>0?h('span',{className:'badge',style:{background:'var(--green)'}},done+'✓'):null,
+          pd>0?h('span',{className:'badge',style:{background:'var(--red)'}},pd+'!'):null,
+          h('span',{style:{color:'var(--text3)',fontSize:'16px'}},isOpen?'▲':'▼')
+        )
+      );
+      card.append(hdr);
+
+      if(isOpen){
+        tasks.forEach((t,ti)=>{
+          const cls='task-row'+(t.prio==='Alta'?' prio-alta':t.prio==='Média'?' prio-media':'')+(t.status==='Feito'?' done':'');
+          const row=h('div',{className:cls,style:{background:t.status==='Feito'?'rgba(34,197,94,.05)':'var(--card2)'}},
+            h('div',{className:'row'},
+              inp(t.hora,'Hora',v=>{state.week[di][ti].hora=v},{type:'time',style:{width:'90px',flex:'none',textAlign:'center'}}),
+              inp(t.tarefa,'O que fazer...',v=>{state.week[di][ti].tarefa=v},{style:{fontWeight:'600'}})
+            ),
+            h('div',{className:'row'},
+              sel(t.tipo,TIPOS,v=>{state.week[di][ti].tipo=v},'Tipo'),
+              sel(t.prio,PRIOS,v=>{state.week[di][ti].prio=v},'Prior.')
+            ),
+            statusBtns(t.status,v=>{state.week[di][ti].status=v}),
+            t.tarefa?h('div',{style:{marginTop:'8px'}},inp(t.notas,'Notas...',v=>{state.week[di][ti].notas=v},{style:{fontSize:'12px'}})):null
+          );
+          card.append(row);
+        });
+        card.append(h('button',{className:'btn-add',on:{click:()=>{state.week[di].push({hora:'',tarefa:'',tipo:'',prio:'',status:'Pendente',notas:''});save();render()}}},
+          '+ Adicionar tarefa'));
+      }
+      content.append(card);
+    });
+  }
+
+  if(state.tab===1){
+    const c1=h('div',{className:'card'},h('h3',null,'🎯 Objetivos da Semana'));
+    state.objs.forEach((o,i)=>{
+      c1.append(h('div',{className:'task-row',style:{background:i%2===0?'var(--card2)':'var(--card)'}},
+        inp(o.obj,'Objetivo '+(i+1)+'...',v=>{state.objs[i].obj=v},{style:{fontWeight:'600',marginBottom:'8px'}}),
+        h('div',{className:'row'},
+          sel(o.area,TIPOS,v=>{state.objs[i].area=v},'Área'),
+          sel(o.alcancou,['Sim','Não','Parcial'],v=>{state.objs[i].alcancou=v},'Alcançou?')
+        ),
+        statusBtns(o.status,v=>{state.objs[i].status=v})
+      ));
+    });
+    c1.append(h('button',{className:'btn-add',on:{click:()=>{state.objs.push({obj:'',area:'',status:'Pendente',alcancou:''});save();render()}}},
+      '+ Adicionar objetivo'));
+    content.append(c1);
+
+    const c2=h('div',{className:'card'},h('h3',null,'📝 Tarefas da Semana'));
+    state.tasks.forEach((t,i)=>{
+      c2.append(h('div',{className:'task-row',style:{background:i%2===0?'var(--card2)':'var(--card)'}},
+        inp(t.tarefa,'Tarefa '+(i+1)+'...',v=>{state.tasks[i].tarefa=v},{style:{marginBottom:'8px'}}),
+        h('div',{className:'row'},
+          sel(t.dia,DAYS.map(d=>d.slice(0,3)),v=>{state.tasks[i].dia=v},'Dia'),
+          sel(t.status,STS,v=>{state.tasks[i].status=v},'Status')
+        )
+      ));
+    });
+    c2.append(h('button',{className:'btn-add',on:{click:()=>{state.tasks.push({tarefa:'',dia:'',status:'Pendente',notas:''});save();render()}}},
+      '+ Adicionar tarefa'));
+    content.append(c2);
+  }
+
+  if(state.tab===2){
+    const c1=h('div',{className:'card'},h('h3',null,'⚡ Compromissos'));
+    state.obrigs.forEach((o,i)=>{
+      c1.append(h('div',{className:'task-row',style:{background:o.urg==='Urgente'?'rgba(239,68,68,.08)':o.urg==='Importante'?'rgba(245,158,11,.06)':'var(--card2)'}},
+        inp(o.desc,'Compromisso...',v=>{state.obrigs[i].desc=v},{style:{fontWeight:'600',marginBottom:'8px'}}),
+        h('div',{className:'row'},
+          sel(o.dia,DAYS.map(d=>d.slice(0,3)),v=>{state.obrigs[i].dia=v},'Dia'),
+          inp(o.hora,'Hora',v=>{state.obrigs[i].hora=v},{type:'time',style:{textAlign:'center'}}),
+          sel(o.urg,URGS,v=>{state.obrigs[i].urg=v},'Urgência'),
+          sel(o.feito,['Sim','Não'],v=>{state.obrigs[i].feito=v},'Feito?')
+        )
+      ));
+    });
+    c1.append(h('button',{className:'btn-add',on:{click:()=>{state.obrigs.push({desc:'',dia:'',hora:'',urg:'Normal',feito:'Não'});save();render()}}},
+      '+ Adicionar'));
+    content.append(c1);
+
+    const c2=h('div',{className:'card'},h('h3',null,'🧭 Decisões a Tomar'));
+    state.decs.forEach((d,i)=>{
+      c2.append(h('div',{className:'task-row',style:{background:i%2===0?'var(--card2)':'var(--card)'}},
+        inp(d.desc,'Decisão...',v=>{state.decs[i].desc=v},{style:{fontWeight:'600',marginBottom:'8px'}}),
+        inp(d.contexto,'Contexto...',v=>{state.decs[i].contexto=v},{style:{fontSize:'12px',marginBottom:'8px'}}),
+        h('div',{className:'row'},
+          inp(d.comquem,'Com quem',v=>{state.decs[i].comquem=v}),
+          sel(d.resolvido,['Sim','Não'],v=>{state.decs[i].resolvido=v},'Resolvido?')
+        )
+      ));
+    });
+    c2.append(h('button',{className:'btn-add',on:{click:()=>{state.decs.push({desc:'',contexto:'',comquem:'',resolvido:'Não'});save();render()}}},
+      '+ Adicionar'));
+    content.append(c2);
+  }
+
+  if(state.tab===3){
+    const c=h('div',{className:'card'},h('h3',null,'🚀 Projetos'));
+    state.projs.forEach((p,i)=>{
+      const pctVal=Math.round((p.pct||0)*100);
+      c.append(h('div',{className:'task-row',style:{background:p.bloqueio==='Sim'?'rgba(239,68,68,.06)':'var(--card2)',borderLeft:p.bloqueio==='Sim'?'3px solid var(--red)':'3px solid var(--purple)'}},
+        inp(p.nome,'Projeto...',v=>{state.projs[i].nome=v},{style:{fontWeight:'700',fontSize:'15px',marginBottom:'8px'}}),
+        inp(p.etapa,'Etapa atual...',v=>{state.projs[i].etapa=v},{style:{fontSize:'12px',marginBottom:'8px'}}),
+        h('div',{style:{marginBottom:'8px'}},
+          h('div',{style:{display:'flex',justifyContent:'space-between',fontSize:'11px',color:'var(--purple)',fontWeight:'700',marginBottom:'4px'}},
+            h('span',null,'Progresso'),h('span',null,pctVal+'%')),
+          h('input',{type:'range',min:'0',max:'1',step:'0.05',value:String(p.pct||0),style:{width:'100%',accentColor:'var(--purple)'},
+            on:{input:e=>{state.projs[i].pct=parseFloat(e.target.value);save();render()}}})
+        ),
+        inp(p.prox,'Próximo passo...',v=>{state.projs[i].prox=v},{style:{fontSize:'12px',marginBottom:'8px'}}),
+        h('div',{className:'row'},
+          sel(p.status,PROJ_STS,v=>{state.projs[i].status=v},'Status'),
+          sel(p.bloqueio,['Sim','Não'],v=>{state.projs[i].bloqueio=v},'Bloqueio?')
+        )
+      ));
+    });
+    c.append(h('button',{className:'btn-add',on:{click:()=>{state.projs.push({nome:'',etapa:'',pct:0,prox:'',status:'Ativo',bloqueio:'Não'});save();render()}}},
+      '+ Adicionar projeto'));
+    content.append(c);
+  }
+
+  if(state.tab===4){
+    const sections=[
+      {k:'bom',label:'✅ O que deu certo?',color:'var(--green)'},
+      {k:'melhorar',label:'⚠️ O que melhorar?',color:'var(--orange)'},
+      {k:'aprend',label:'💡 Aprendizados',color:'var(--accent)'},
+      {k:'prox',label:'🎯 Próxima semana',color:'var(--purple)'}
+    ];
+    sections.forEach(s=>{
+      const ta=h('textarea',{placeholder:'Escreva aqui...',on:{input:e=>{state.rev[s.k]=e.target.value;save()}}});
+      ta.value=state.rev[s.k]||'';
+      content.append(h('div',{className:'card'},
+        h('h3',{style:{color:s.color}},s.label),ta
+      ));
+    });
+    const stars=h('div',{className:'stars'});
+    for(let n=1;n<=10;n++){
+      stars.append(h('button',{className:'star'+(state.rev.nota>=n?' on':''),on:{click:()=>{state.rev.nota=n;save();render()}}},String(n)));
+    }
+    content.append(h('div',{className:'card',style:{textAlign:'center'}},
+      h('h3',{style:{justifyContent:'center',color:'var(--orange)'}},'⭐ Nota da Semana'),stars
+    ));
+  }
+
+  app.append(h('button',{className:'fab',style:{background:'var(--red)'},on:{click:()=>{
+    if(confirm('Zerar tudo para nova semana?')){
+      state.week=DAYS.map(()=>Array.from({length:6},()=>({hora:'',tarefa:'',tipo:'',prio:'',status:'Pendente',notas:''})));
+      state.objs=Array.from({length:6},()=>({obj:'',area:'',status:'Pendente',alcancou:''}));
+      state.tasks=Array.from({length:12},()=>({tarefa:'',dia:'',status:'Pendente',notas:''}));
+      state.obrigs=Array.from({length:8},()=>({desc:'',dia:'',hora:'',urg:'Normal',feito:'Não'}));
+      state.decs=Array.from({length:6},()=>({desc:'',contexto:'',comquem:'',resolvido:'Não'}));
+      state.projs=Array.from({length:6},()=>({nome:'',etapa:'',pct:0,prox:'',status:'Ativo',bloqueio:'Não'}));
+      state.rev={bom:'',melhorar:'',aprend:'',prox:'',nota:0};
+      save();render();
+    }
+  }}},'🗑'));
+}
+
+await initNotif();
+render();
+if(state.notifPerm==='granted'){
+  await scheduleSmartReminders();
+  if(!isNative) startWebNotifCheck();
+}
+
+// PWA fallback (only in browser)
+if(!isNative && 'serviceWorker' in navigator){
+  const sw=`self.addEventListener('install',e=>self.skipWaiting());self.addEventListener('activate',e=>clients.claim());self.addEventListener('fetch',e=>e.respondWith(fetch(e.request).catch(()=>new Response('Offline'))));`;
+  navigator.serviceWorker.register(URL.createObjectURL(new Blob([sw],{type:'application/javascript'}))).catch(()=>{});
+}
+</script>
+</body>
+</html>

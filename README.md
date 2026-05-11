@@ -1,141 +1,140 @@
-# 📋💰 Minha Agenda & Minhas Finanças — APKs Android
+# 📋💰 Minha Agenda & Minhas Finanças
 
-Dois apps Android nativos (Capacitor + WebView), gerados a partir dos HTMLs originais. Funcionam **100% offline**, dados ficam só no celular, e o build dos `.apk` é feito automaticamente pelo GitHub Actions.
+Dois apps pessoais (Capacitor + WebView Android + PWA pra iOS). Funcionam **100% offline**, dados ficam só no celular.
 
----
+## 🌐 Página de instalação (para compartilhar com qualquer pessoa)
 
-## 📦 Como pegar os APKs prontos
+Depois de habilitar GitHub Pages (instruções abaixo), o site fica em:
 
-1. **Faça push** desta branch (ou abra a aba **Actions** do GitHub e rode o workflow `Build APKs (Agenda + Finanças)` manualmente).
-2. Espere o workflow terminar (~3–5 min).
-3. Clique no run que terminou → role até **Artifacts**.
-4. Baixe `agenda-apk` e `financas-apk`. Cada um é um `.zip` com o `.apk` dentro.
-
-## 📲 Como instalar no celular
-
-1. Transfira o `.apk` pro telefone (USB, Google Drive, Telegram pra si mesmo, qualquer jeito).
-2. Abra o `.apk` pelo gerenciador de arquivos.
-3. O Android vai pedir **"Permitir instalação de fontes desconhecidas"** — habilite só pra esse app (Configurações → Aplicativos → app de origem → Permitir).
-4. Instale.
-
-> **Sobre o "aviso de vírus":** o Play Protect e antivírus às vezes pedem confirmação pra apps instalados fora da Play Store. Isso **não é detecção de malware** — é a tela padrão de apps não publicados. O APK é assinado em modo debug pelo próprio Android Studio/CI, sem ofuscação suspeita, sem permissões abusivas. Pra eliminar o aviso por completo, publique na Play Store (Google Play Console, R$ 25 conta de desenvolvedor uma única vez).
-
----
-
-## 📋 Minha Agenda
-
-App da agenda semanal com tarefas, objetivos, projetos, compromissos, decisões e revisão semanal.
-
-### Lembretes inteligentes (locais, sem servidor)
-
-| Lembrete | Quando dispara | O que mostra |
-|---|---|---|
-| 🌅 Bom dia | Todo dia às **8h** | "Você tem X tarefas hoje" ou "Nada cadastrado pra hoje — abra e adicione!" |
-| ⏰ Cobrança de atraso | 15 min após a hora marcada de cada tarefa pendente | "Tarefa 'X' estava marcada pra 14:30. Já fez?" |
-| 📝 Revisão semanal | Todo **domingo às 19h** | "Hora da revisão da semana" |
-| 🎯 Aba vazia | **Segunda às 9h**, só se você não preencheu Objetivos ou Projetos | "Sua semana ainda está em branco" |
-
-Os lembretes são reagendados automaticamente a cada vez que você salva alguma coisa no app (todo `input`/`change`). Você não precisa configurar nada.
-
-Pra ativar: toque no botão **🔔 Ativar** no topo. O Android vai pedir permissão de notificação — aceite.
-
----
-
-## 💰 Minhas Finanças
-
-Controle de receitas, despesas, status (Não Pago / Guardado / Pago), aquisições com meta mensal, investimentos por mês, e metas financeiras.
-
-### Cálculos automáticos
-Saldo, totais por status, % gastos por categoria, % concluído da aquisição, meta de investimento por % da renda mensal, total investido no ano — tudo recalculado a cada lançamento.
-
-### 🏦 Captura automática das notificações dos bancos
-
-A aba **🔔 Bancos** lê as notificações dos apps de banco instalados no seu celular (PIX, compras, transferências) e te deixa lançar com 1 toque como Entrada ou Saída.
-
-**Bancos suportados** (basta o app oficial estar instalado e disparar notificação):
-Nubank · Itaú · Bradesco · Santander · Inter · Banco do Brasil · C6 · Original · Next · Caixa · BRB · Sicredi · Sicoob · Pan · Mercado Pago · PicPay · Will · Neon
-
-**Como ativar a captura:**
-1. Abra a aba **🔔 Bancos** no app.
-2. Toque em **"Abrir Configurações de Notificação"**.
-3. Encontre **Minhas Finanças** na lista de "Acesso a notificações".
-4. Ative o toggle. O Android vai pedir confirmação — confirme.
-5. Pronto. A partir daí, toda notificação dos bancos da lista vira um item na aba 🔔 Bancos automaticamente.
-
-> **Privacidade**: os dados ficam só no seu celular (`SharedPreferences` do app). Nada vai pra servidor — não tem servidor. Você pode revogar a permissão a qualquer momento nas mesmas Configurações.
-
-### Lembretes da Finanças
-
-| Lembrete | Quando |
-|---|---|
-| 💸 "Lançou os gastos de hoje?" | Todo dia às 20h |
-| 📊 Revisão financeira | Domingo às 19h |
-| ⚠️ Saldo negativo | Imediato, quando você lança uma despesa que deixa o saldo negativo |
-
-### Importação manual (CSV/OFX)
-Botão **🏦 Importar** no topo aceita CSV no formato `data;descrição;valor` (positivo = entrada, negativo = saída).
-
----
-
-## 🛠️ Build local (se quiser compilar você mesmo)
-
-Pré-requisitos: Node 20+, JDK 21, Android Studio (com SDK 34 instalado).
-
-```bash
-# Para cada app (agenda ou financas):
-cd agenda
-npm install
-npx cap add android
-# Copia AndroidManifest customizado e plugin Java
-cp android-overrides/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
-cp -r android-overrides/java/* android/app/src/main/java/   # só financas tem java overrides
-npx cap sync android
-cd android
-./gradlew assembleDebug
-# APK fica em: android/app/build/outputs/apk/debug/app-debug.apk
+```
+https://luanmatheus059.github.io/Agenda-apk-e-financias/
 ```
 
-Pra build de release assinado, gere uma keystore (`keytool -genkey -v -keystore release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias minhas-apps`) e configure no `android/app/build.gradle`.
+Manda esse link pra quem quiser instalar. A página detecta automaticamente Android/iOS e mostra as instruções certas pra cada um.
+
+### Como ativar GitHub Pages (1x, ~30 segundos)
+
+1. Vai em https://github.com/Luanmatheus059/Agenda-apk-e-financias/settings/pages
+2. Em **Source** seleciona: **Deploy from a branch**
+3. **Branch:** `main`
+4. **Folder:** `/docs`
+5. **Save**
+6. Espera 1-2 minutos. O site fica online em `https://luanmatheus059.github.io/Agenda-apk-e-financias/`
 
 ---
 
-## ⚠️ Sobre as expectativas
+## 🤖 Para Android (você)
 
-**O que esses apps fazem:**
-- Empacotam os HTMLs originais como app Android nativo instalável
-- Notificações locais funcionam mesmo com o app fechado, sem internet, sem servidor
-- O app de Finanças lê notificações dos bancos (não os apps em si — só o que aparece na barra de notificação)
-- Cálculos rodam no celular; nada sai dali
+APKs **assinados com chave de release** (não debug). Reduz muito os bloqueios do Play Protect.
 
-**O que NÃO fazem (e por quê):**
-- ❌ **Não leem o saldo direto dos apps de banco.** Os apps de banco são isolados pelo Android (sandboxing) — nenhum outro app consegue ler dados deles. A única forma legal de ter saldo automaticamente é via **Open Finance Brasil**, que exige a empresa ser autorizada pelo Banco Central. Pra uso pessoal, a captura por notificação é o mais próximo que dá.
-- ❌ **Não conseguem evitar 100% o aviso do Android ao instalar.** Apps fora da Play Store sempre mostram "fonte desconhecida". Não é vírus, é só a tela padrão.
+### Baixar e instalar
+
+| App | Direto pelo GitHub | Pelo site (Pages) |
+|---|---|---|
+| 📋 Agenda | [apks/minha-agenda.apk](apks/minha-agenda.apk) | `…/apks/minha-agenda.apk` |
+| 💰 Finanças | [apks/minhas-financas.apk](apks/minhas-financas.apk) | `…/apks/minhas-financas.apk` |
+
+### O que vai acontecer ao instalar
+
+1. **Aviso "este tipo de arquivo pode prejudicar..."** → toca em **Baixar mesmo assim**
+2. **"Por segurança, seu celular não permite..."** → ativa "Permitir desta fonte" no Chrome (Configurações → Apps → Chrome → Instalar apps desconhecidos → Permitir)
+3. **Play Protect: "App não verificado"** → toca em **Mais detalhes** → **Instalar mesmo assim**
+4. Instala
+
+> ⚠️ Esses avisos **vão aparecer enquanto o app não estiver na Play Store**. Não tem como contornar — é segurança do Android. Eliminar 100% dos avisos = R$ 25 + Google Play Console + review do Google (~3 dias). É a única forma "oficial".
 
 ---
 
-## 📂 Estrutura do repo
+## 📱 Para iOS (esposa, qualquer iPhone)
+
+**iOS não permite `.ipa` fora da App Store.** Mas o app já é um **PWA** — instala parecido como app nativo, sem App Store:
+
+1. Abre **no Safari** (não funciona em outros browsers):
+   - Agenda: `https://luanmatheus059.github.io/Agenda-apk-e-financias/agenda/`
+   - Finanças: `https://luanmatheus059.github.io/Agenda-apk-e-financias/financas/`
+2. Toca no ícone **Compartilhar** (quadrado com seta pra cima, embaixo da tela)
+3. Rola e toca em **Adicionar à Tela de Início**
+4. Confirma → vai aparecer o ícone na tela inicial
+5. Abre **pelo ícone novo** (não pelo Safari) — assim roda em tela cheia, sem barra do browser
+
+### O que funciona no iOS (PWA)
+- ✅ Toda a interface e funções dos apps
+- ✅ Funciona offline depois da primeira abertura
+- ✅ Ícone na tela inicial, splash screen
+- ✅ Notificações no iOS 16.4+
+
+### O que NÃO funciona no iOS
+- ❌ **Captura de notificações dos apps de banco** — proibido pela Apple pra qualquer app, não tem como
+- Use a importação manual (CSV/extrato) na Finanças
+
+---
+
+## 🎯 Lembretes inteligentes
+
+### 📋 Agenda
+| Quando | O que aparece |
+|---|---|
+| 8h diário | "Você tem X tarefas hoje" ou "Nada cadastrado — abra e adicione!" |
+| 15min após hora marcada | "Tarefa 'X' estava marcada pra 14:30. Já fez?" |
+| Domingo 19h | "Hora da revisão da semana" |
+| Segunda 9h | "Você não definiu Objetivos/Projetos" (só se vazio) |
+
+### 💰 Finanças
+| Quando | O que aparece |
+|---|---|
+| 20h diário | "Lançou os gastos de hoje?" (ou "Você não lança há X dias") |
+| Domingo 19h | "Revisão financeira da semana" |
+| Imediato | "Saldo negativo!" se despesas > receitas |
+
+---
+
+## 🏦 Captura automática de movimentações (só Android)
+
+A aba **🔔 Bancos** lê notificações dos apps de banco e te deixa lançar como Entrada ou Saída com 1 toque.
+
+### Bancos suportados
+Nubank · Itaú · Bradesco · Santander · Inter · Banco do Brasil · C6 · Original · Next · Caixa · BRB · Sicredi · Sicoob · Pan · Mercado Pago · PicPay · Will · Neon
+
+### Como ativar
+1. Aba 🔔 Bancos → **Abrir Configurações de Notificação**
+2. Acha **Minhas Finanças** na lista de "Acesso a notificações"
+3. Ativa o toggle, confirma
+
+Pronto. Qualquer PIX, compra ou transferência aparece automaticamente.
+
+**Privacidade:** tudo fica no celular (`SharedPreferences`). Nada vai pra servidor.
+
+---
+
+## 🛠️ Build local (avançado)
+
+```bash
+cd agenda   # ou financas
+npm install
+npx cap add android
+cp android-overrides/AndroidManifest.xml android/app/src/main/
+cp -r android-overrides/java/* android/app/src/main/java/ 2>/dev/null || true
+cp -r android-overrides/res/* android/app/src/main/res/ 2>/dev/null || true
+cat android-overrides/release-signing.gradle >> android/app/build.gradle
+npx cap sync android
+cd android && ./gradlew assembleRelease
+# APK em: app/build/outputs/apk/release/app-release.apk
+```
+
+A keystore (`keystore/release.jks`) e suas senhas estão no repo pra reproducibilidade. Se quiser trocar, edita `*/android-overrides/release-signing.gradle`.
+
+---
+
+## 📂 Estrutura
 
 ```
 /
-├── agenda/                          ← projeto Capacitor da Agenda
-│   ├── package.json
-│   ├── capacitor.config.json
-│   ├── www/index.html               ← HTML adaptado com Capacitor + notifs locais
-│   └── android-overrides/
-│       └── AndroidManifest.xml      ← manifest customizado (permissões)
-│
-├── financas/                        ← projeto Capacitor das Finanças
-│   ├── package.json
-│   ├── capacitor.config.json
-│   ├── www/index.html               ← HTML com aba "🔔 Bancos"
-│   └── android-overrides/
-│       ├── AndroidManifest.xml      ← + serviço NotificationListener
-│       └── java/com/luanmatheus/financas/
-│           ├── BancoNotificationService.java   ← escuta notificações
-│           ├── BancoNotificationPlugin.java    ← ponte JS ↔ Android
-│           └── MainActivity.java               ← registra o plugin
-│
-└── .github/workflows/build-apks.yml ← CI que gera os 2 APKs
+├── agenda/                 ← projeto Capacitor da Agenda
+├── financas/               ← projeto Capacitor das Finanças
+├── apks/                   ← APKs prontos (release-signed)
+├── docs/                   ← Site GitHub Pages (PWA pra iOS + download Android)
+├── keystore/               ← Chave de assinatura release
+└── .github/workflows/      ← CI que rebuilda os APKs automaticamente
 ```
 
-A pasta `*/android/` (gerada por `cap add android`) **não é commitada** — o CI gera ela do zero a cada build e aplica as customizações de `android-overrides/`.
+A pasta `*/android/` é regenerada a cada build (não commitada) — customizações ficam em `*/android-overrides/`.

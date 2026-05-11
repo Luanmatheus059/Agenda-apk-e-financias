@@ -1,0 +1,15 @@
+{
+  "name": "Minha Agenda",
+  "short_name": "Agenda",
+  "description": "Agenda semanal com lembretes inteligentes",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "icons": [
+    {"src": "../icons/agenda-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+    {"src": "../icons/agenda-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
+  ]
+}
