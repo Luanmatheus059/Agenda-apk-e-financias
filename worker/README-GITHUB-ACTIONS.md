@@ -100,3 +100,4 @@ Análise técnica baseada em **regras matemáticas clássicas** (RSI, médias m�
 - Gestão de risco (2% por trade)
 - Stop loss
 - Diversificação
+# trigger 1778530325
