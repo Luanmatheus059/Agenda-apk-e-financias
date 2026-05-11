@@ -652,6 +652,66 @@ function diaryStats(){
   return {total:ops.length, wins, losses, winRate, totalPnL, avgR, bigWin, bigLoss, maxDD};
 }
 
+// ─── ANÁLISE IA LOCAL (sem API key, roda automaticamente) ───
+function runLocalAIAnalysis(){
+  const tE=tot(S.ent), tS=tot(S.sai), saldo=tE-tS;
+  const ind = S.market.indices || [];
+  const ibov = ind.find(i=>i.symbol==='IBOV');
+  const usd = ind.find(i=>String(i.symbol).includes('USD'));
+  const btc = ind.find(i=>i.symbol==='BTC');
+
+  // Sentimento das notícias
+  const s = S.newsSentiment || {bull:0,bear:0,neutral:0};
+  const totalN = s.bull+s.bear+s.neutral;
+  let newsBias = 'NEUTRO ⚪';
+  if(s.bull > s.bear*1.3) newsBias = 'OTIMISTA 🟢';
+  else if(s.bear > s.bull*1.3) newsBias = 'PESSIMISTA 🔴';
+
+  // Sentimento do mercado (variação Ibov + USD + BTC)
+  let mktScore = 0;
+  if(ibov) mktScore += ibov.chg || 0;
+  if(usd) mktScore -= (usd.chg || 0) * 0.5; // USD subindo = ruim pro Brasil
+  if(btc) mktScore += (btc.chg || 0) * 0.3;
+  const mktBias = mktScore > 0.5 ? 'ALTA 🟢' : mktScore < -0.5 ? 'QUEDA 🔴' : 'LATERAL ⚪';
+
+  // Decisão final
+  let acao, justif;
+  if(newsBias.includes('OTIMISTA') && mktScore > 0){
+    acao = '🟢 COMPRAR EM PULLBACK';
+    justif = 'Notícias positivas + mercado em alta. Espere ajustes intradiários pra entrada.';
+  } else if(newsBias.includes('PESSIMISTA') && mktScore < 0){
+    acao = '🔴 DEFENDER POSIÇÕES';
+    justif = 'Notícias negativas + mercado em queda. Reduza exposição em renda variável, foque RF.';
+  } else if(mktScore > 0 && newsBias.includes('NEUTRO')){
+    acao = '🟡 AGUARDAR CONFIRMAÇÃO';
+    justif = 'Mercado em alta mas notícias neutras. Espere o segundo dia em alta antes de comprar.';
+  } else if(mktScore < 0 && newsBias.includes('NEUTRO')){
+    acao = '🟡 OPORTUNIDADE DE COMPRA';
+    justif = 'Queda sem motivo claro nas manchetes pode ser ajuste técnico. Bom pra DCA.';
+  } else {
+    acao = '⚪ MANTER ALOCAÇÃO';
+    justif = 'Mercado e notícias sem viés claro. DCA (compras programadas) funciona melhor.';
+  }
+
+  // Allocação por perfil
+  let aloc, alocLbl;
+  if(S.perfilInv==='conservador'){ aloc={RF:80,FII:10,Acoes:7,Cripto:3}; alocLbl='CONSERVADOR'; }
+  else if(S.perfilInv==='agressivo'){ aloc={RF:20,FII:20,Acoes:40,Cripto:20}; alocLbl='AGRESSIVO'; }
+  else { aloc={RF:50,FII:20,Acoes:25,Cripto:5}; alocLbl='MODERADO'; }
+  const inv = saldo > 0 ? Math.round(saldo*(S.invPct||10)/100) : 0;
+
+  return {
+    ts: Date.now(),
+    mktBias, newsBias, acao, justif, alocLbl,
+    saldo, inv, aloc,
+    snapshot: {
+      ibov: ibov?{p:ibov.price,c:ibov.chg}:null,
+      usd: usd?{p:usd.price,c:usd.chg}:null,
+      btc: btc?{p:btc.price,c:btc.chg}:null
+    }
+  };
+}
+
 // Análise IA via DeepSeek (chamada sob demanda)
 async function callDeepSeek(){
   if(!S.deepseekKey){ showToast('Configure sua API key da DeepSeek primeiro'); return; }
@@ -2191,6 +2251,19 @@ function render(){
         h('button',{className:'btn btn-o',style:{fontSize:'11px',padding:'8px 12px'},on:{click:()=>{S.modal='import';render()}}},'🏦 Importar')
       )
     ),
+    // Status do sistema (todos automáticos)
+    (()=>{
+      const mktOK = (S.market.indices||[]).length > 0;
+      const newsOK = (S.news||[]).length > 0;
+      const notifOK = S.notifPerm === 'granted';
+      const allOK = mktOK && newsOK && notifOK;
+      return h('div',{style:{display:'flex',gap:'8px',marginBottom:'10px',padding:'10px',background:allOK?'rgba(34,197,94,.08)':'rgba(245,158,11,.08)',borderRadius:'10px',border:'1px solid '+(allOK?'#22c55e44':'#f59e0b44'),fontSize:'11px',fontWeight:'700'}},
+        h('span',{style:{color:allOK?'#22c55e':'#f59e0b'}},allOK?'✅ TODOS OS SISTEMAS OK':'⚙️ Inicializando...'),
+        h('span',{style:{color:mktOK?'#22c55e':'#9ca3af'}},mktOK?'📊 Mercado':'⏳ Mercado'),
+        h('span',{style:{color:newsOK?'#22c55e':'#9ca3af'}},newsOK?'📰 '+S.news.length+' notícias':'⏳ Notícias'),
+        h('span',{style:{color:notifOK?'#22c55e':'#9ca3af'}},notifOK?'🔔 Notif ON':'❌ Notif OFF')
+      );
+    })(),
     h('div',{className:'mcards'},
       h('div',{className:'mc'},h('div',{className:'i'},'💰'),h('div',{className:'v',style:{color:'#22c55e'}},fmt(tE)),h('div',{className:'l'},'Receitas')),
       h('div',{className:'mc'},h('div',{className:'i'},'💸'),h('div',{className:'v',style:{color:'#ef4444'}},fmt(tS)),h('div',{className:'l'},'Despesas')),
@@ -2254,6 +2327,37 @@ function render(){
     if(saldo<0){
       ct.append(h('div',{className:'banner warn'},'⚠️ Atenção: suas despesas superam as entradas em ',h('strong',null,fmt(Math.abs(saldo))),'.'));
     }
+
+    // ─── CARD AGENTE IA AUTOMÁTICO (sempre visível, sem cliques) ───
+    const aiR = runLocalAIAnalysis();
+    const aiBgColor = aiR.acao.includes('COMPRAR')||aiR.acao.includes('OPORTUNIDADE')?'rgba(34,197,94,.1)':
+                      aiR.acao.includes('DEFENDER')?'rgba(239,68,68,.1)':'rgba(168,85,247,.1)';
+    const aiBorderColor = aiR.acao.includes('COMPRAR')||aiR.acao.includes('OPORTUNIDADE')?'#22c55e':
+                          aiR.acao.includes('DEFENDER')?'#ef4444':'#a855f7';
+    ct.append(h('div',{className:'card',style:{background:aiBgColor,border:'2px solid '+aiBorderColor}},
+      h('div',{style:{display:'flex',alignItems:'center',gap:'8px',marginBottom:'10px'}},
+        h('span',{className:'pulse'}),
+        h('h3',{style:{margin:0,color:aiBorderColor,fontSize:'15px'}},'🤖 Agente IA · em tempo real'),
+        h('span',{className:'live-badge'},'AO VIVO')
+      ),
+      h('div',{style:{fontSize:'18px',fontWeight:'900',marginBottom:'6px',color:aiBorderColor}},aiR.acao),
+      h('div',{style:{fontSize:'13px',color:'var(--text2)',marginBottom:'10px',lineHeight:'1.4'}},aiR.justif),
+      h('div',{style:{display:'flex',gap:'6px',flexWrap:'wrap',marginBottom:'10px'}},
+        h('span',{className:'pill'},'Mercado: '+aiR.mktBias),
+        h('span',{className:'pill'},'Notícias: '+aiR.newsBias),
+        h('span',{className:'pill'},'Perfil: '+aiR.alocLbl)
+      ),
+      aiR.inv>0 ? h('div',{style:{padding:'10px',background:'rgba(0,0,0,.25)',borderRadius:'8px',fontSize:'12px'}},
+        h('div',{style:{fontWeight:'700',marginBottom:'6px'}},'💼 ALOCAÇÃO SUGERIDA · '+fmt(aiR.inv)),
+        h('div',null,'Renda Fixa: ',h('b',{style:{color:'#22c55e'}},fmt(aiR.inv*aiR.aloc.RF/100)),' ('+aiR.aloc.RF+'%)'),
+        h('div',null,'FIIs: ',h('b',{style:{color:'#3b82f6'}},fmt(aiR.inv*aiR.aloc.FII/100)),' ('+aiR.aloc.FII+'%)'),
+        h('div',null,'Ações: ',h('b',{style:{color:'#a855f7'}},fmt(aiR.inv*aiR.aloc.Acoes/100)),' ('+aiR.aloc.Acoes+'%)'),
+        h('div',null,'Cripto: ',h('b',{style:{color:'#f59e0b'}},fmt(aiR.inv*aiR.aloc.Cripto/100)),' ('+aiR.aloc.Cripto+'%)')
+      ) : null,
+      h('div',{style:{fontSize:'10px',color:'var(--text3)',marginTop:'8px',fontStyle:'italic'}},
+        'Análise atualizada automaticamente. Educacional · não é recomendação.'
+      )
+    ));
 
     // Banner MIUI/POCO se detectado (notif podem estar sendo bloqueadas)
     const _dev = detectDevice();
@@ -3541,13 +3645,30 @@ await initNotif();
 render();
 await scheduleSmartReminders();
 
-// Aguardar mercado carregar antes de agendar (snapshot melhor)
+// ─── BOOT 100% AUTOMÁTICO ───
+// Roda em paralelo: mercado + notícias + análise IA + agendamento
+// Tudo sem precisar tocar em nenhum botão
 (async()=>{
-  try{
-    await fetchMarket(true);
-    const n = await scheduleAggressiveNotifications();
-    if(n) console.log('✅ '+n+' notificações ILIMITADAS agendadas');
-  }catch(e){console.warn('init notif failed',e)}
+  console.log('🚀 Boot automático iniciando...');
+  // 1. Mercado em paralelo
+  fetchMarket(true).then(()=>{
+    console.log('  ✅ Mercado carregado');
+    render(); // re-render com snapshot fresco
+  }).catch(e=>console.warn('  ❌ Mercado:',e.message));
+
+  // 2. Notícias em paralelo
+  fetchAllNews().then(()=>{
+    console.log('  ✅ Notícias carregadas:',S.news.length);
+    render();
+  }).catch(e=>console.warn('  ❌ Notícias:',e.message));
+
+  // 3. Agendamento (espera mercado)
+  setTimeout(async ()=>{
+    try{
+      const n = await scheduleAggressiveNotifications();
+      if(n) console.log('  ✅ '+n+' notificações ILIMITADAS agendadas');
+    }catch(e){console.warn('  ❌ Notif:',e.message)}
+  }, 3000);
 })();
 
 // REAGENDAMENTO PERPÉTUO — a cada 1h enquanto app aberto, reagenda 7 dias frescos
