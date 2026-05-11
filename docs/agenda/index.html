@@ -100,13 +100,43 @@ let state={
   decs:LS.get('decs',Array.from({length:6},()=>({desc:'',contexto:'',comquem:'',resolvido:'Não'}))),
   projs:LS.get('projs',Array.from({length:6},()=>({nome:'',etapa:'',pct:0,prox:'',status:'Ativo',bloqueio:'Não'}))),
   rev:LS.get('rev',{bom:'',melhorar:'',aprend:'',prox:'',nota:0}),
+  trello: LS.get('trello',{key:'',token:'',boardId:''}),
+  showTrello: false,
   notifPerm:'default'
 };
 
 function save(){
   LS.set('week',state.week);LS.set('objs',state.objs);LS.set('tasks',state.tasks);
   LS.set('obrigs',state.obrigs);LS.set('decs',state.decs);LS.set('projs',state.projs);LS.set('rev',state.rev);
+  LS.set('trello',state.trello);
   scheduleSmartReminders();
+}
+
+// ─── Trello integration ───
+async function syncTrelloToAgenda(){
+  const {key,token,boardId} = state.trello || {};
+  if(!key || !token || !boardId){ showToast('Configure Trello primeiro'); return; }
+  showToast('Buscando cards do Trello...');
+  try{
+    const url = `https://api.trello.com/1/boards/${boardId}/cards?key=${encodeURIComponent(key)}&token=${encodeURIComponent(token)}&fields=name,desc,due,labels,closed`;
+    const res = await fetch(url);
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const cards = await res.json();
+    const open = cards.filter(c=>!c.closed);
+    let added=0;
+    for(const c of open){
+      // evita duplicatas
+      if(state.tasks.some(t=>t.tarefa===c.name)) continue;
+      const isDone = (c.labels||[]).some(l=>/done|feito|concl/i.test(l.name||''));
+      state.tasks.push({tarefa:c.name, dia:'', status: isDone?'Feito':'Pendente', notas:c.desc||'', trello:true});
+      added++;
+    }
+    save();render();
+    showToast(`${added} card(s) novos do Trello`);
+  }catch(e){
+    console.error(e);
+    showToast('Erro Trello: '+e.message);
+  }
 }
 
 function showToast(msg){
@@ -294,8 +324,11 @@ function render(){
         h('h1',null,'📋 Minha Agenda'),
         h('p',null,`Semana: ${wdates[0]} — ${wdates[6]}`)
       ),
-      h('button',{className:state.notifPerm==='granted'?'notif-btn notif-on':'notif-btn',on:{click:reqNotif}},
-        state.notifPerm==='granted'?'🔔 Ativo':'🔔 Ativar')
+      h('div',{style:{display:'flex',gap:'6px'}},
+        h('button',{className:'notif-btn',style:{background:'#0079bf'},on:{click:()=>{state.showTrello=true;render()}}},'🔗 Trello'),
+        h('button',{className:state.notifPerm==='granted'?'notif-btn notif-on':'notif-btn',on:{click:reqNotif}},
+          state.notifPerm==='granted'?'🔔 Ativo':'🔔 Ativar')
+      )
     ),
     h('div',{className:'stats'},
       ...[['⏰',todayP,'Hoje','var(--orange)'],['✅',feitos,'Feitas','var(--green)'],['📌',pend,'Pendentes','var(--red)'],['📊',allT.length,'Total','var(--accent)']].map(([ic,n,l,c])=>
@@ -472,6 +505,31 @@ function render(){
     content.append(h('div',{className:'card',style:{textAlign:'center'}},
       h('h3',{style:{justifyContent:'center',color:'var(--orange)'}},'⭐ Nota da Semana'),stars
     ));
+  }
+
+  // ═══ Modal Trello ═══
+  if(state.showTrello){
+    const md=h('div',{style:{position:'fixed',inset:'0',background:'rgba(0,0,0,.7)',zIndex:'200',display:'flex',alignItems:'flex-end',justifyContent:'center'},on:{click:e=>{if(e.target===md){state.showTrello=false;render()}}}},
+      h('div',{style:{background:'var(--bg2)',borderRadius:'20px 20px 0 0',padding:'20px 16px 30px',width:'100%',maxWidth:'500px',maxHeight:'85vh',overflowY:'auto'}},
+        h('h3',{style:{fontSize:'18px',marginBottom:'10px'}},'🔗 Sincronizar com Trello'),
+        h('p',{style:{fontSize:'12px',color:'var(--text2)',marginBottom:'10px',lineHeight:'1.5'}},
+          'Pegue Key e Token em ', h('a',{href:'https://trello.com/app-key',target:'_blank',style:{color:'#3b82f6'}},'trello.com/app-key'),
+          '. O Board ID está na URL do quadro (a parte depois de /b/).'
+        ),
+        h('input',{type:'text',value:state.trello.key||'',placeholder:'API Key',style:{marginBottom:'6px'},
+          on:{input:e=>{state.trello={...state.trello,key:e.target.value};save()}}}),
+        h('input',{type:'text',value:state.trello.token||'',placeholder:'Token',style:{marginBottom:'6px'},
+          on:{input:e=>{state.trello={...state.trello,token:e.target.value};save()}}}),
+        h('input',{type:'text',value:state.trello.boardId||'',placeholder:'Board ID',style:{marginBottom:'10px'},
+          on:{input:e=>{state.trello={...state.trello,boardId:e.target.value};save()}}}),
+        h('div',{style:{fontSize:'11px',color:'var(--text3)',marginBottom:'12px'}},'Cards do board viram tarefas na aba 🎯 Objetivos → Tarefas da Semana. Cards com label "Done"/"Feito" são marcados como concluídos.'),
+        h('div',{className:'row'},
+          h('button',{className:'btn',style:{flex:'1',padding:'12px',background:'#0079bf',color:'#fff'},on:{click:()=>{state.showTrello=false;syncTrelloToAgenda()}}},'🔄 Sincronizar agora'),
+          h('button',{className:'btn',style:{flex:'1',padding:'12px',background:'var(--bg)',color:'var(--text3)'},on:{click:()=>{state.showTrello=false;render()}}},'Fechar')
+        )
+      )
+    );
+    app.append(md);
   }
 
   app.append(h('button',{className:'fab',style:{background:'var(--red)'},on:{click:()=>{
