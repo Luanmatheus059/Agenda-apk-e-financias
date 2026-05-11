@@ -198,6 +198,20 @@ async function initNotif(){
       const r=await LocalNotifications.requestPermissions();
       S.notifPerm=r.display==='granted'?'granted':'denied';
     }
+    // Cria canal Android com som padrão de notificação (sininho) + vibração + lights
+    try{
+      await LocalNotifications.createChannel({
+        id:'financas-default',
+        name:'Lembretes Finanças',
+        description:'Lembretes de gastos, saldo e movimentações',
+        importance:5,
+        visibility:1,
+        sound:'',
+        vibration:true,
+        lights:true,
+        lightColor:'#22c55e'
+      });
+    }catch(e){}
   }
 }
 
@@ -226,6 +240,7 @@ async function scheduleSmartReminders(){
     body: diasSemLancar>=2
       ? `Você não lança nada há ${diasSemLancar} dias. Toque pra abrir!`
       : 'Bora registrar o que entrou e saiu hoje?',
+    channelId:'financas-default',
     schedule:{ on:{ hour:20, minute:0 }, allowWhileIdle:true }
   });
 
@@ -233,24 +248,25 @@ async function scheduleSmartReminders(){
     id:NID.weekly,
     title:'📊 Revisão financeira da semana',
     body:'Confira saldo, gastos por categoria e o progresso da sua próxima aquisição.',
+    channelId:'financas-default',
     schedule:{ on:{ weekday:1, hour:19, minute:0 }, allowWhileIdle:true }
   });
 
-  // Lembrete de poupança/aquisição mensal (todo dia 5)
   if(S.aquisicao.nome && S.aquisicao.valor>0){
     notifs.push({
       id:NID.savings,
       title:'🎯 Guardar pra '+S.aquisicao.nome,
       body:'Hora de separar o dinheiro do mês pra sua próxima aquisição.',
+      channelId:'financas-default',
       schedule:{ on:{ day:5, hour:10, minute:0 }, allowWhileIdle:true }
     });
   }
 
-  // Lembrete de revisão mensal (dia 1)
   notifs.push({
     id:NID.monthly,
     title:'📅 Mês novo, planejamento novo',
     body:'Defina suas metas e orçamento pro mês que começou.',
+    channelId:'financas-default',
     schedule:{ on:{ day:1, hour:9, minute:0 }, allowWhileIdle:true }
   });
 
@@ -260,6 +276,7 @@ async function scheduleSmartReminders(){
       id:NID.lowBalance,
       title:'⚠️ Saldo negativo!',
       body:`Suas despesas superam as entradas em ${fmt(Math.abs(saldo))}. Revise os gastos.`,
+      channelId:'financas-default',
       schedule:{ at: new Date(Date.now()+60_000) }
     });
   }
@@ -356,30 +373,55 @@ function parseOFX(text){
 }
 
 function parseCSV(text){
-  const out = [];
-  const lines = text.split(/\r?\n/).filter(l => l.trim());
-  if(!lines.length) return out;
+  // Multi-section: divide em seções por linhas em branco e parseia cada uma
+  const allLines = text.split(/\r?\n/);
+  const sections = [];
+  let cur = [];
+  for(const l of allLines){
+    if(l.trim()) cur.push(l);
+    else if(cur.length){ sections.push(cur); cur=[]; }
+  }
+  if(cur.length) sections.push(cur);
+
+  const all = [];
+  for(const sec of sections){
+    const part = parseCSVSection(sec);
+    all.push(...part);
+  }
+  return all;
+}
+
+function parseCSVSection(lines){
+  if(!lines.length) return [];
   const sample = lines[0];
   const sep = sample.includes(';') ? ';' : sample.includes('\t') ? '\t' : ',';
 
-  // ─── Detecta colunas pelo cabeçalho ───
-  // Procura headers comuns: Data, Descrição/Histórico, Valor, Débito, Crédito, Tipo, D/C
   const firstCols = lines[0].split(sep).map(c => c.trim().replace(/^"|"$/g,''));
-  const hasHeader = /data|descri|valor|hist[oó]r|d[ée]bito|cr[eé]dito|tipo|d\/c/i.test(lines[0]);
+  // Detecta header (português + inglês: data, descrição, valor, débito, crédito,
+  // release_date, transaction_type, transaction_net_amount, amount, name, memo, etc)
+  const headerRegex = /^(data|dt|date|descri|hist[oó]r|memo|t[ií]tulo|name|valor|amount|vlr|d[ée]bito|debit|cr[eé]dito|credit|tipo|d\/c|natureza|release_date|posted_date|transaction|operation|net_amount)/i;
+  const hasHeader = firstCols.some(c => headerRegex.test(c));
+
   let idxData=-1, idxDesc=-1, idxValor=-1, idxDeb=-1, idxCred=-1, idxTipo=-1;
   if(hasHeader){
     firstCols.forEach((c,i)=>{
-      const cl = c.toLowerCase();
-      if(idxData<0 && /^data|^dt/.test(cl)) idxData=i;
-      else if(idxDesc<0 && /descri|hist[oó]r|memo|t[ií]tulo|name/.test(cl)) idxDesc=i;
-      else if(/d[ée]bito|debit/.test(cl) && !/cr/.test(cl)) idxDeb=i;
-      else if(/cr[eé]dito|credit/.test(cl)) idxCred=i;
-      else if(idxValor<0 && /^valor$|^amount|^vlr$|^valor\s*\(/i.test(cl)) idxValor=i;
+      const cl = c.toLowerCase().trim();
+      if(idxData<0 && /^data$|^dt$|^date$|release_date|posted_date|transaction_date|operation_date/.test(cl)) idxData=i;
+      else if(idxDesc<0 && /descri|hist[oó]r|memo|t[ií]tulo|^name$|transaction_type|operation_desc/.test(cl)) idxDesc=i;
+      else if(/^d[ée]bito|^debit$/.test(cl) && !/credit/.test(cl)) idxDeb=i;
+      else if(/^cr[eé]dito|^credit$/.test(cl)) idxCred=i;
+      else if(idxValor<0 && /^valor$|^amount$|^vlr$|net_amount|transaction_net_amount|^valor\s*\(/.test(cl)) idxValor=i;
       else if(idxTipo<0 && /^tipo$|^d\/c$|^dc$|^natureza/.test(cl)) idxTipo=i;
     });
   }
 
+  // É uma SEÇÃO DE RESUMO se tiver só Débito+Crédito (sem data + descrição) → skip
+  if(hasHeader && (idxDeb>=0 || idxCred>=0) && idxData<0 && idxDesc<0){
+    return [];
+  }
+
   const start = hasHeader ? 1 : 0;
+  const out = [];
 
   for(let i=start; i<lines.length; i++){
     const cols = lines[i].split(sep).map(c => c.trim().replace(/^"|"$/g,''));
@@ -388,9 +430,8 @@ function parseCSV(text){
     let data='', desc='', valor=0, tipo=null;
 
     if(idxData>=0 || idxDesc>=0 || idxValor>=0 || idxDeb>=0 || idxCred>=0){
-      // Tem header — usa os índices detectados
-      data = parseBRDate(cols[idxData>=0?idxData:0] || '');
-      desc = cols[idxDesc>=0?idxDesc:1] || '';
+      data = idxData>=0 ? parseBRDate(cols[idxData]) : parseBRDate(cols[0]);
+      desc = idxDesc>=0 ? cols[idxDesc] : (cols[1] || '');
       if(idxDeb>=0 && idxCred>=0){
         const d = parseBRMoney(cols[idxDeb]);
         const c = parseBRMoney(cols[idxCred]);
@@ -399,7 +440,6 @@ function parseCSV(text){
       } else if(idxValor>=0){
         valor = parseBRMoney(cols[idxValor]);
       } else {
-        // último número da linha como fallback
         valor = parseBRMoney(cols[cols.length-1]);
       }
       if(idxTipo>=0 && !tipo){
@@ -408,7 +448,6 @@ function parseCSV(text){
         else if(t==='c' || t==='crédito' || t==='credito' || t==='cr' || t==='+') tipo='entrada';
       }
     } else {
-      // Sem header — heurística antiga
       if(cols.length >= 3){
         data = parseBRDate(cols[0]);
         valor = parseBRMoney(cols[cols.length-1]);
@@ -420,11 +459,13 @@ function parseCSV(text){
       }
     }
 
-    // Se ainda não temos tipo, tenta inferir pelos valores das outras células (D/C)
     if(!tipo) tipo = inferTypeFromRow(cols);
-
-    if(!desc) desc = 'Transação';
-    if(valor !== 0) out.push({data, desc, valor, tipo});
+    if(!desc || /^[A-Z_]+$/.test(desc)) desc = 'Transação';
+    // Skip linhas com valor inválido ou enorme (suspeito de ser ID)
+    if(valor === 0 || Math.abs(valor) > 10_000_000) continue;
+    // Skip se desc parece header
+    if(/^(release_date|transaction|reference|description|amount|valor|débito|debito|crédito|credito|initial|final|partial|balance)$/i.test(desc)) continue;
+    out.push({data, desc, valor, tipo});
   }
   return out;
 }
