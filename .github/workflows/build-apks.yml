@@ -104,6 +104,11 @@ jobs:
             sed -i "s|<string name=\"title_activity_main\">[^<]*</string>|<string name=\"title_activity_main\">$APP_NAME</string>|g" "$STRINGS"
           fi
 
+          # Append release-signing config (uses keystore at repo root)
+          if [ -f android-overrides/release-signing.gradle ]; then
+            cat android-overrides/release-signing.gradle >> android/app/build.gradle
+          fi
+
           # Sync Capacitor (copies www, installs Android plugins)
           npx cap sync android
 
@@ -111,20 +116,20 @@ jobs:
         working-directory: ${{ matrix.app }}/android
         run: chmod +x gradlew
 
-      - name: Build debug APK
+      - name: Build release APK
         working-directory: ${{ matrix.app }}/android
-        run: ./gradlew assembleDebug --stacktrace
+        run: ./gradlew assembleRelease --stacktrace
 
       - name: Rename APK
-        working-directory: ${{ matrix.app }}/android/app/build/outputs/apk/debug
+        working-directory: ${{ matrix.app }}/android/app/build/outputs/apk/release
         run: |
-          mv app-debug.apk "${{ matrix.app }}-debug.apk"
+          mv app-release.apk "${{ matrix.app }}-release.apk"
           ls -lh
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.app }}-apk
-          path: ${{ matrix.app }}/android/app/build/outputs/apk/debug/${{ matrix.app }}-debug.apk
+          path: ${{ matrix.app }}/android/app/build/outputs/apk/release/${{ matrix.app }}-release.apk
           if-no-files-found: error
           retention-days: 90
