@@ -75,3 +75,12 @@ jobs:
         with:
           path: worker/.state.json
           key: agente-state-${{ github.run_id }}
+
+      - name: 🏓 Ping de status (só em dispatch/push manual)
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+        env:
+          T: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          C: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          MSG="✅ <b>Agente Financeiro conectado!</b>%0A%0AGitHub Actions rodando 24/7.%0AVocê vai receber:%0A%0A📊 Snapshot do mercado a cada 15min%0A📡 Alerta quando detectar setup técnico%0A🌅 Resumo diário 8h (seg-sex)%0A🏁 Resumo de fechamento 18h05%0A%0A<i>Disparado: $(date '+%d/%m %H:%M')</i>"
+          curl -s "https://api.telegram.org/bot${T}/sendMessage?chat_id=${C}&parse_mode=HTML&text=${MSG}" -o /dev/null && echo "✅ Mensagem de ping enviada" || echo "❌ Falha ping"
