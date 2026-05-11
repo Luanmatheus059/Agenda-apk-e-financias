@@ -1019,6 +1019,33 @@ async function scheduleSmartReminders(){
     });
   }
 
+  // ─── Notificações HORÁRIAS durante o pregão (ter-sex 10h-17h) ───
+  // Snapshot do mercado tirado quando você abre o app, agendadas pras
+  // próximas horas. Funcionam mesmo com app fechado.
+  const ibov = (S.market.indices||[]).find(i=>i.symbol==='IBOV');
+  const usd = (S.market.indices||[]).find(i=>String(i.symbol).includes('USD'));
+  const btc = (S.market.indices||[]).find(i=>i.symbol==='BTC');
+  const snap = `IBOV ${ibov?(ibov.chg>=0?'+':'')+ibov.chg.toFixed(2)+'%':'?'} · USD ${usd?'R$'+usd.price.toFixed(2):'?'} · BTC ${btc?(btc.chg>=0?'+':'')+btc.chg.toFixed(2)+'%':'?'}`;
+  for(const wd of [3,4,5,6]){
+    for(const hour of [10,11,12,14,15,16,17]){
+      notifs.push({
+        id: 7000+wd*100+hour,
+        title:`📊 Mercado · ${hour}h`,
+        body: snap,
+        channelId:'financas-default',
+        schedule:{ on:{weekday:wd, hour, minute:0}, allowWhileIdle:true }
+      });
+    }
+    // Fechamento 18h
+    notifs.push({
+      id: 7800+wd,
+      title:`🏁 Pregão encerrado`,
+      body:`Resumo do dia: ${snap}. Abra o app pra ver setups detectados.`,
+      channelId:'financas-default',
+      schedule:{ on:{weekday:wd, hour:18, minute:5}, allowWhileIdle:true }
+    });
+  }
+
   try{ await LocalNotifications.schedule({notifications:notifs}); }catch(e){console.error(e);}
 }
 function tot(arr){return arr.reduce((s,e)=>s+(parseFloat(e.valor)||0),0)}
@@ -1614,9 +1641,22 @@ function render(){
   const tInv=S.inv.reduce((s,v)=>s+(parseFloat(v.investido)||0),0);
   const pendentesBanco = S.bankNotifs.filter(n=>!n.resolvido).length;
 
+  // Status do mercado B3 (10h-18h dias úteis)
+  const _agora = new Date();
+  const _dia = _agora.getDay();
+  const _hora = _agora.getHours() + _agora.getMinutes()/60;
+  const _mercadoAberto = _dia>=1 && _dia<=5 && _hora>=10 && _hora<18;
+  const _statusLabel = _mercadoAberto ? '🟢 Mercado Aberto' : (_dia===0||_dia===6 ? '🔴 Final de semana' : (_hora<10 ? '🟡 Pré-mercado' : '🔴 Mercado Fechado'));
+
   app.append(h('div',{className:'hdr'},
     h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
-      h('div',null,h('h1',null,'💰 Minhas Finanças'),h('p',null,new Date().toLocaleDateString('pt-BR',{month:'long',year:'numeric'}))),
+      h('div',null,
+        h('h1',null,'💰 Minhas Finanças'),
+        h('div',{style:{display:'flex',alignItems:'center',gap:'8px',marginTop:'4px'}},
+          h('p',{style:{margin:0}},new Date().toLocaleDateString('pt-BR',{month:'long',year:'numeric'})),
+          h('span',{style:{fontSize:'10px',fontWeight:'700',color:_mercadoAberto?'var(--green)':'var(--text3)',padding:'2px 8px',borderRadius:'6px',background:'rgba(0,0,0,.3)',border:'1px solid var(--border)'}},_statusLabel)
+        )
+      ),
       h('button',{className:'btn btn-o',style:{fontSize:'11px',padding:'8px 12px'},on:{click:()=>{S.modal='import';render()}}},'🏦 Importar')
     ),
     h('div',{className:'mcards'},
@@ -2055,6 +2095,82 @@ function render(){
       height:400
     });
 
+    // ─── Crypto Heatmap ───
+    ct.append(h('div',{className:'card'},
+      h('h3',null,'🪙 Mapa de calor — Cripto'),
+      h('div',{id:'tv-crypto-heatmap',style:{height:'380px'}})
+    ));
+    injectTV('tv-crypto-heatmap','https://s3.tradingview.com/external-embedding/embed-widget-crypto-coins-heatmap.js',{
+      dataSource:'Crypto',
+      blockSize:'market_cap_calc',
+      blockColor:'24h_close_change|5',
+      locale:'br',
+      symbolUrl:'',
+      colorTheme:'dark',
+      hasTopBar:false,
+      isDataSetEnabled:false,
+      isZoomEnabled:true,
+      hasSymbolTooltip:true,
+      width:'100%',
+      height:380
+    });
+
+    // ─── Forex Cross Rates ───
+    ct.append(h('div',{className:'card'},
+      h('h3',null,'💱 Forex (taxas de câmbio)'),
+      h('div',{id:'tv-forex-cross',style:{height:'400px'}})
+    ));
+    injectTV('tv-forex-cross','https://s3.tradingview.com/external-embedding/embed-widget-forex-cross-rates.js',{
+      width:'100%',
+      height:400,
+      currencies:['BRL','USD','EUR','GBP','JPY','CHF','AUD'],
+      isTransparent:true,
+      colorTheme:'dark',
+      locale:'br'
+    });
+
+    // ─── Market Overview (commodities + índices + bonds) ───
+    ct.append(h('div',{className:'card'},
+      h('h3',null,'🌍 Visão geral global (commodities, índices, bonds)'),
+      h('div',{id:'tv-overview',style:{height:'460px'}})
+    ));
+    injectTV('tv-overview','https://s3.tradingview.com/external-embedding/embed-widget-market-overview.js',{
+      colorTheme:'dark',
+      dateRange:'12M',
+      showChart:true,
+      locale:'br',
+      width:'100%',
+      height:460,
+      largeChartUrl:'',
+      isTransparent:true,
+      showSymbolLogo:true,
+      tabs:[
+        {title:'Índices',symbols:[
+          {s:'FOREXCOM:SPXUSD',d:'S&P 500'},
+          {s:'FOREXCOM:NSXUSD',d:'Nasdaq 100'},
+          {s:'BMFBOVESPA:IBOV',d:'Ibovespa'},
+          {s:'INDEX:NKY',d:'Nikkei 225'},
+          {s:'INDEX:DEU40',d:'DAX'},
+        ]},
+        {title:'Commodities',symbols:[
+          {s:'CME_MINI:ES1!',d:'S&P 500 Fut'},
+          {s:'CME:6E1!',d:'Euro'},
+          {s:'COMEX:GC1!',d:'Ouro'},
+          {s:'NYMEX:CL1!',d:'Petróleo WTI'},
+          {s:'NYMEX:NG1!',d:'Gás Natural'},
+        ]},
+        {title:'Bonds',symbols:[
+          {s:'CBOT:ZB1!',d:'Treasury 30y'},
+          {s:'CBOT:UB1!',d:'Treasury Ultra'},
+          {s:'CBOT:TN1!',d:'10y Note'},
+          {s:'EUREX:FGBL1!',d:'Bund'},
+        ]},
+        {title:'Forex',symbols:[
+          {s:'FX:EURUSD'},{s:'FX:GBPUSD'},{s:'FX:USDJPY'},{s:'FX_IDC:USDBRL',d:'USD/BRL'},{s:'FX_IDC:EURBRL',d:'EUR/BRL'}
+        ]}
+      ]
+    });
+
     // ─── News Timeline ───
     ct.append(h('div',{className:'card'},
       h('h3',null,'🗞️ Notícias do Mercado (TradingView)'),
@@ -2066,6 +2182,22 @@ function render(){
       displayMode:'regular',
       width:'100%',
       height:420,
+      colorTheme:'dark',
+      locale:'br'
+    });
+
+    // ─── Top Stories ───
+    ct.append(h('div',{className:'card'},
+      h('h3',null,'📰 Top Stories'),
+      h('div',{id:'tv-top-stories',style:{height:'480px'}})
+    ));
+    injectTV('tv-top-stories','https://s3.tradingview.com/external-embedding/embed-widget-news-flow.js',{
+      feedMode:'market',
+      market:'stock',
+      isTransparent:true,
+      displayMode:'regular',
+      width:'100%',
+      height:480,
       colorTheme:'dark',
       locale:'br'
     });
@@ -2145,12 +2277,12 @@ function render(){
     ));
     // Sub-tabs
     const sub = S.agenteSub || 'ia';
+    // sub-tabs: Sinais primeiro (era a mais útil), IA por último (opcional)
     ct.append(h('div',{className:'subtabs',style:{overflowX:'auto',flexWrap:'nowrap'}},
-      ...[['signals','📡 Sinais'],['ia','🤖 IA'],['chart','📊 Gráfico'],['risk','🎯 Risco'],['watch','👁️ Watch'],['diary','📒 Diário']].map(([k,l])=>
+      ...[['signals','📡 Sinais'],['chart','📊 Gráfico'],['watch','👁️ Watch'],['risk','🎯 Risco'],['diary','📒 Diário'],['ia','🤖 IA']].map(([k,l])=>
         h('button',{className:'subtab'+(sub===k?' on':''),style:{whiteSpace:'nowrap'},on:{click:()=>{
           S.agenteSub=k;
           if(k==='signals'){
-            // SEMPRE roda análise ao entrar (mesmo que já tenha)
             const stale = !S.lastTechAnalysis.ts || (Date.now()-S.lastTechAnalysis.ts) > 60_000;
             if(stale) runTechAnalysis();
             startAutoRefresh();
@@ -2163,7 +2295,7 @@ function render(){
     // ─── Sinais (análise técnica automática SEM IA) ───
     if(sub==='signals'){
       const ago = S.lastTechAnalysis.ts ? Math.floor((Date.now()-S.lastTechAnalysis.ts)/1000) : null;
-      ct.append(h('div',{className:'card',style:{background:'linear-gradient(135deg,rgba(139,92,246,.1),rgba(6,182,212,.06))',border:'1px solid rgba(139,92,246,.25)'}},
+      ct.append(h('div',{className:'card',style:{background:'linear-gradient(135deg,rgba(212,175,55,.08),rgba(0,0,0,.4))',border:'1px solid var(--border-gold)'}},
         h('div',{style:{display:'flex',alignItems:'center',gap:'10px'}},
           h('span',{className:'pulse'}),
           h('div',{style:{flex:1}},
@@ -2175,6 +2307,32 @@ function render(){
           h('span',{className:'live-badge'},'24/7')
         )
       ));
+
+      // ─── TradingView Technical Analysis Gauge (Strong Buy/Sell — estilo Clear/XP) ───
+      const tvSym = S.signalSymbol || 'BMFBOVESPA:PETR4';
+      ct.append(h('div',{className:'card'},
+        h('h3',null,'🎯 Recomendação dos analistas técnicos',h('span',{className:'badge'},'AO VIVO')),
+        h('p',{style:{fontSize:'11px',color:'var(--text3)',marginBottom:'8px'}},
+          'Mesma análise técnica que aparece na Clear/XP. Agregação de 26 indicadores (RSI, MACD, médias, etc) → Strong Buy / Buy / Neutral / Sell / Strong Sell. Atualiza sozinho.'
+        ),
+        h('div',{className:'chip-row'},
+          ...['BMFBOVESPA:IBOV','BMFBOVESPA:PETR4','BMFBOVESPA:VALE3','BMFBOVESPA:ITUB4','BMFBOVESPA:BBAS3','BMFBOVESPA:MGLU3','BMFBOVESPA:WEGE3','FX_IDC:USDBRL','BINANCE:BTCBRL','BINANCE:ETHBRL','NASDAQ:AAPL','NASDAQ:TSLA','NASDAQ:NVDA'].map(s=>
+            h('button',{className:'chip'+(tvSym===s?' on':''),on:{click:()=>{S.signalSymbol=s;render()}}}, s.split(':')[1])
+          )
+        ),
+        h('div',{id:'tv-tech',className:'tv-container',style:{minHeight:'430px'}})
+      ));
+      injectTV('tv-tech','https://s3.tradingview.com/external-embedding/embed-widget-technical-analysis.js',{
+        interval:'1h',
+        width:'100%',
+        isTransparent:true,
+        height:430,
+        symbol:tvSym,
+        showIntervalTabs:true,
+        displayMode:'multiple',
+        locale:'br',
+        colorTheme:'dark'
+      });
 
       const results = S.lastTechAnalysis.results || [];
       if(results.length){
