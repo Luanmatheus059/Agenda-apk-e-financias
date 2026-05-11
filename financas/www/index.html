@@ -74,9 +74,9 @@ button{font-family:inherit;cursor:pointer;border:none;outline:none;transition:al
 const Cap = window.Capacitor;
 const isNative = !!(Cap && Cap.isNativePlatform && Cap.isNativePlatform());
 let LocalNotifications = null, BancoNotif = null;
-if (isNative) {
-  try { LocalNotifications = (await import('@capacitor/local-notifications')).LocalNotifications; } catch(e){}
-  try { BancoNotif = Cap.Plugins.BancoNotif; } catch(e){}
+if (isNative && Cap.Plugins) {
+  LocalNotifications = Cap.Plugins.LocalNotifications || null;
+  BancoNotif = Cap.Plugins.BancoNotif || null;
 }
 
 const CATS_E=["Salário","Freelance","Vendas Plataforma","Investimentos","Comissão","Outros"];
