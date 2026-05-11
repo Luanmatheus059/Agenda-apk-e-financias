@@ -145,6 +145,20 @@ async function initNotif(){
   if(isNative && LocalNotifications){
     const p=await LocalNotifications.checkPermissions();
     state.notifPerm = p.display==='granted' ? 'granted' : (p.display==='denied'?'denied':'default');
+    // Cria canal Android com som padrão + vibração
+    try{
+      await LocalNotifications.createChannel({
+        id:'agenda-default',
+        name:'Lembretes Agenda',
+        description:'Lembretes de tarefas e revisões',
+        importance:5,
+        visibility:1,
+        sound:'',
+        vibration:true,
+        lights:true,
+        lightColor:'#3b82f6'
+      });
+    }catch(e){}
   } else if('Notification' in window){
     state.notifPerm=Notification.permission;
   }
@@ -197,7 +211,7 @@ async function scheduleSmartReminders(){
     id:NID.morning,
     title:'📋 Bom dia! Sua agenda',
     body:morningBody,
-    schedule:{ on:{ hour:8, minute:0 }, allowWhileIdle:true },
+    channelId:'agenda-default',schedule:{ on:{ hour:8, minute:0 }, allowWhileIdle:true },
     smallIcon:'ic_stat_icon_config_sample'
   });
 
@@ -213,7 +227,7 @@ async function scheduleSmartReminders(){
             id: NID.taskBase + todayIdx*100 + ti,
             title:'⏰ Tarefa em atraso?',
             body:`"${t.tarefa.slice(0,60)}" estava marcada pra ${t.hora}. Já fez?`,
-            schedule:{ at: when, allowWhileIdle:true }
+            channelId:'agenda-default',schedule:{ at: when, allowWhileIdle:true }
           });
         }
       }
@@ -225,7 +239,7 @@ async function scheduleSmartReminders(){
     id:NID.weeklyReview,
     title:'📝 Hora da revisão semanal',
     body:'Tira 5 minutos: o que deu certo, o que melhorar, o que aprendeu?',
-    schedule:{ on:{ weekday:1, hour:19, minute:0 }, allowWhileIdle:true } // Capacitor: 1=domingo
+    channelId:'agenda-default',schedule:{ on:{ weekday:1, hour:19, minute:0 }, allowWhileIdle:true } // domingo
   });
 
   // 4) Alerta de aba vazia: segunda 9h se Objetivos/Projetos zerados
@@ -239,7 +253,7 @@ async function scheduleSmartReminders(){
       id:NID.emptyWeek,
       title:'🎯 Sua semana ainda está em branco',
       body:`Você não definiu ${faltam.join(' nem ')}. Abra o app e organize a semana.`,
-      schedule:{ on:{ weekday:2, hour:9, minute:0 }, allowWhileIdle:true } // segunda
+      channelId:'agenda-default',schedule:{ on:{ weekday:2, hour:9, minute:0 }, allowWhileIdle:true } // segunda
     });
   }
 
