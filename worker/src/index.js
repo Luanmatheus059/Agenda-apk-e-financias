@@ -136,14 +136,16 @@ async function main() {
   if (SINGLE_RUN) {
     try {
       await analyzeWatchlist();
-      // Verifica se é hora de mandar resumo diário (entre 8h-9h)
-      const h = new Date().getHours();
-      const day = new Date().getDay();
+      // Hora de Brasília (TZ pode estar UTC no GitHub Actions)
+      const nowBR = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+      const h = nowBR.getHours();
+      const day = nowBR.getDay();
       const isWeekday = day >= 1 && day <= 5;
+      console.log(`   Hora BR: ${h}h, dia ${day} (útil=${isWeekday})`);
       if (process.env.SEND_DAILY_SUMMARY === 'true' && isWeekday && h === parseInt(process.env.DAILY_SUMMARY_HOUR || '8')) {
         await sendDailySummary();
       }
-      // Resumo fechamento entre 18h-19h
+      // Resumo fechamento das 18h-19h horário de Brasília
       if (isWeekday && h === 18) {
         await sendCloseSummary();
       }
