@@ -86,6 +86,7 @@ button{font-family:inherit;cursor:pointer;border:none;outline:none;transition:al
 .btn-r{background:linear-gradient(135deg,#ff3b3b,#fb7185);color:#fff;box-shadow:0 4px 14px rgba(255,59,59,.3)}
 .btn-o{background:linear-gradient(135deg,var(--gold),var(--gold-light));color:#0a0a0a;box-shadow:var(--glow-gold);font-weight:800}
 .btn-b{background:linear-gradient(135deg,var(--blue),#60a5fa);color:#fff;box-shadow:0 4px 14px rgba(59,130,246,.3)}
+.btn-purple{background:linear-gradient(135deg,#a855f7,#7c3aed);color:#fff;box-shadow:0 4px 14px rgba(168,85,247,.4)}
 .btn-p{background:linear-gradient(135deg,var(--gold),var(--gold-light));color:#0a0a0a;box-shadow:var(--glow-gold);font-weight:800}
 .btn-add{width:100%;padding:13px;border-radius:12px;border:1.5px dashed var(--border-gold);background:transparent;color:var(--gold);font-size:13px;font-weight:600;transition:all .2s}
 .btn-add:active{background:rgba(212,175,55,.05);border-color:var(--gold)}
@@ -269,6 +270,11 @@ let S={
   market: LS.get('market',{ts:0, indices:[], stocks:[], news:[]}),
   marketLoading: false,
   perfilInv: LS.get('perfilInv','moderado'),
+  invSub: 'visao',
+  invSelected: LS.get('invSelected','ITSA4'),
+  simQtde: LS.get('simQtde','100'),
+  simAporte: LS.get('simAporte','0'),
+  dividendTarget: LS.get('dividendTarget',''),
   news: LS.get('news',[]),
   newsLoading: false,
   newsLastTs: LS.get('newsLastTs',0),
@@ -288,7 +294,7 @@ let S={
 };
 
 function save(){
-  ['ent','sai','aquisicao','aquisHist','invPct','inv','metas','sheetsURL','trello','market','perfilInv','watchlist','alerts','diary','deepseekKey','aiAnalysis','news','newsLastTs','newsCategory'].forEach(k=>LS.set(k,S[k]));
+  ['ent','sai','aquisicao','aquisHist','invPct','inv','metas','sheetsURL','trello','market','perfilInv','watchlist','alerts','diary','deepseekKey','aiAnalysis','news','newsLastTs','newsCategory','invSelected','simQtde','simAporte','dividendTarget'].forEach(k=>LS.set(k,S[k]));
   scheduleSmartReminders();
 }
 
@@ -796,67 +802,78 @@ Idioma: português BR. Máximo 700 palavras. Seja útil, não genérico.`},
 }
 
 // ─── Mercado financeiro (Brapi.dev — API pública grátis) ───
+// Yahoo Finance helper (sem auth, sem CORS para query1)
+async function yahooQuote(sym){
+  try{
+    const r = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${sym}?interval=1d&range=2d`);
+    if(!r.ok) return null;
+    const d = await r.json();
+    const meta = d?.chart?.result?.[0]?.meta;
+    if(!meta) return null;
+    const price = meta.regularMarketPrice;
+    const prev = meta.chartPreviousClose || meta.previousClose;
+    if(price && prev) return {price, chg: (price-prev)/prev*100};
+  }catch(e){console.warn('yahoo',sym,e.message)}
+  return null;
+}
+
 async function fetchMarket(force){
-  if(!force && S.market.ts && (Date.now()-S.market.ts) < 5*60_000) return; // cache 5min
+  if(!force && S.market.ts && (Date.now()-S.market.ts) < 5*60_000) return;
   S.marketLoading=true; render();
   try{
-    const symbols = ['IBOV','PETR4','VALE3','ITUB4','BBDC4','MGLU3','BBAS3','ABEV3','WEGE3','B3SA3'];
-    const stocksRes = await fetch(`https://brapi.dev/api/quote/${symbols.join(',')}?range=1d`);
-    const stocksData = stocksRes.ok ? await stocksRes.json() : {results:[]};
-    // Dólar
-    let dolar=null;
-    try{
-      const cr = await fetch('https://brapi.dev/api/v2/currency?currency=USD-BRL');
-      if(cr.ok){
-        const cd = await cr.json();
-        const c = (cd.currency||[])[0];
-        if(c) dolar={symbol:'USD/BRL',name:'Dólar',price:c.bidPrice,chg:parseFloat(c.bidVariation)||0};
-      }
-    }catch(e){}
-    // Bitcoin
-    let btc=null;
-    try{
-      const br = await fetch('https://brapi.dev/api/v2/crypto?coin=BTC&currency=BRL');
-      if(br.ok){
-        const bd = await br.json();
-        const c = (bd.coins||[])[0];
-        if(c) btc={symbol:'BTC',name:'Bitcoin',price:c.regularMarketPrice,chg:c.regularMarketChangePercent||0};
-      }
-    }catch(e){}
-    const results = stocksData.results || [];
-    const ibov = results.find(r=>r.symbol==='IBOV');
-    const indices = [];
-    if(ibov) indices.push({symbol:'IBOV',name:'Ibovespa',price:ibov.regularMarketPrice,chg:ibov.regularMarketChangePercent||0});
-    if(dolar) indices.push(dolar);
-    if(btc) indices.push(btc);
-    const stocks = results.filter(r=>r.symbol!=='IBOV').map(r=>({
-      symbol:r.symbol,
-      name:r.shortName||r.longName||r.symbol,
-      price:r.regularMarketPrice,
-      chg:r.regularMarketChangePercent||0,
-      volume:r.regularMarketVolume
+    // Yahoo Finance é a fonte primária (sem auth)
+    // Ações BR usam .SA. Índices têm ^. Forex tem =X. Cripto -USD
+    const symMap = [
+      ['^BVSP','IBOV','Ibovespa'],
+      ['USDBRL=X','USD/BRL','Dólar'],
+      ['BTC-USD','BTC','Bitcoin'],
+      ['PETR4.SA','PETR4','Petrobras'],
+      ['VALE3.SA','VALE3','Vale'],
+      ['ITUB4.SA','ITUB4','Itaú'],
+      ['BBDC4.SA','BBDC4','Bradesco'],
+      ['BBAS3.SA','BBAS3','Banco do Brasil'],
+      ['ABEV3.SA','ABEV3','Ambev'],
+      ['WEGE3.SA','WEGE3','WEG'],
+      ['MGLU3.SA','MGLU3','Magazine Luiza'],
+      ['B3SA3.SA','B3SA3','B3'],
+      ['ITSA4.SA','ITSA4','Itaúsa'],
+      ['BBSE3.SA','BBSE3','BB Seguridade'],
+      ['TAEE11.SA','TAEE11','Taesa'],
+      ['EGIE3.SA','EGIE3','Engie']
+    ];
+
+    // Busca em PARALELO via Yahoo
+    const results = await Promise.all(symMap.map(async ([y,sym,name])=>{
+      const q = await yahooQuote(y);
+      return q ? {symbol:sym,name,price:q.price,chg:q.chg} : null;
     }));
-    // Notícias (Brapi não tem endpoint genérico de notícias estável; usamos news de tickers populares)
-    const news=[];
+    const valid = results.filter(Boolean);
+
+    const indices = valid.filter(r=>['IBOV','USD/BRL','BTC'].includes(r.symbol));
+    const stocks = valid.filter(r=>!['IBOV','USD/BRL','BTC'].includes(r.symbol));
+
+    // Notícias da Yahoo (free)
+    const news = [];
     try{
-      const nr = await fetch('https://brapi.dev/api/v2/quote/PETR4?modules=news');
-      if(nr.ok){
-        const nd = await nr.json();
-        const arr = nd.news || (nd.results && nd.results[0] && nd.results[0].news) || [];
-        arr.slice(0,5).forEach(n=>news.push({
-          title:n.title,
-          source:n.source||n.publisher||'Notícia',
-          url:n.url||n.link||'#',
-          date:n.publishedAt||n.pubDate||''
-        }));
+      const r = await fetch('https://query1.finance.yahoo.com/v1/finance/search?q=ibovespa&newsCount=5');
+      if(r.ok){
+        const d = await r.json();
+        for(const n of (d.news||[]).slice(0,5)){
+          if(n.title) news.push({
+            title:n.title,
+            source:n.publisher||'Yahoo',
+            url:n.link||'#',
+            date:n.providerPublishTime ? new Date(n.providerPublishTime*1000).toISOString() : ''
+          });
+        }
       }
     }catch(e){}
+
     S.market = {ts:Date.now(), indices, stocks, news};
     LS.set('market', S.market);
-    showToast('📊 Mercado atualizado');
+    console.log('📊 Mercado: '+indices.length+' índices + '+stocks.length+' ações');
   }catch(e){
-    console.error('Brapi error',e);
-    showToast('Falha ao buscar mercado (sem internet?)');
+    console.error('Market fetch error',e);
   }
   S.marketLoading=false; render();
 }
@@ -1290,6 +1307,333 @@ async function fetchAllNews(){
   S.newsLoading = false;
   save();
   render();
+}
+
+// ─── Universo de ativos com DY (DY médio histórico, dados públicos B3) ───
+const ATIVOS_INVESTIR = {
+  acoes: [
+    {sym:'ITSA4', name:'Itaúsa', dy:7.5, p:11.20, set:'Financeiro', desc:'Holding do Itaú, paga dividendos mensalmente. Empresa robusta, baixo risco entre as ações.'},
+    {sym:'BBSE3', name:'BB Seguridade', dy:8.2, p:36.50, set:'Seguros', desc:'Subsidiária do Banco do Brasil. Negócio de seguros é estável. DY alto e sustentável.'},
+    {sym:'TAEE11', name:'Taesa', dy:9.0, p:36.00, set:'Energia', desc:'Transmissão de energia, contratos longos com receita previsível. DY alto histórico.'},
+    {sym:'VALE3', name:'Vale', dy:8.5, p:65.00, set:'Mineração', desc:'Gigante do minério de ferro. DY oscila mas média alta. Risco commodities.'},
+    {sym:'BBAS3', name:'Banco do Brasil', dy:9.8, p:28.00, set:'Bancos', desc:'Banco estatal, P/L baixo, dividendos generosos. Risco político.'},
+    {sym:'PETR4', name:'Petrobras', dy:12.5, p:38.00, set:'Petróleo', desc:'Petroleira estatal. DY ALTÍSSIMO mas volátil. Política governamental afeta.'},
+    {sym:'EGIE3', name:'Engie Brasil', dy:8.0, p:42.00, set:'Energia', desc:'Geração de energia diversificada. DY consistente. Empresa defensiva.'},
+    {sym:'VIVT3', name:'Vivo', dy:7.0, p:48.00, set:'Telecom', desc:'Líder de telecom no Brasil. Negócio maduro, DY moderado mas estável.'},
+    {sym:'CPLE6', name:'Copel', dy:6.5, p:9.50, set:'Energia', desc:'Empresa de energia do Paraná. Privatizada recentemente. DY pode crescer.'},
+    {sym:'CMIG4', name:'Cemig', dy:9.5, p:11.00, set:'Energia', desc:'Estatal de MG. DY alto mas instável historicamente.'}
+  ],
+  fii: [
+    {sym:'MXRF11', name:'Maxi Renda', dy:11.5, p:10.50, set:'Recebíveis', desc:'FII de papel (CRIs). Liquidez alta, cota baixa, dividendos mensais altos. Mais arriscado que tijolo.'},
+    {sym:'HGLG11', name:'CSHG Logística', dy:8.0, p:175.00, set:'Logístico', desc:'Galpões logísticos AAA. Inquilinos blue-chip. Tijolo de qualidade.'},
+    {sym:'KNRI11', name:'Kinea Renda Imobiliária', dy:7.5, p:160.00, set:'Híbrido', desc:'Mix de lajes corporativas e logística. Gestão Kinea (Itaú).'},
+    {sym:'HGRE11', name:'CSHG Real Estate', dy:9.0, p:130.00, set:'Lajes Corporativas', desc:'Lajes premium em SP. Vacância controlada. Tijolo defensivo.'},
+    {sym:'VISC11', name:'Vinci Shopping', dy:9.5, p:97.00, set:'Shopping', desc:'Shoppings de alto padrão. Receita atrelada a aluguel + faturamento dos lojistas.'},
+    {sym:'XPLG11', name:'XP Log', dy:8.5, p:90.00, set:'Logístico', desc:'Galpões logísticos. Crescimento via e-commerce. Bom potencial.'},
+    {sym:'KNCR11', name:'Kinea Recebíveis', dy:11.0, p:97.00, set:'Recebíveis', desc:'FII de CRIs indexados ao CDI. Renda variável atrelada à Selic.'},
+    {sym:'BTLG11', name:'BTG Pactual Logística', dy:8.8, p:96.00, set:'Logístico', desc:'Logística BTG. Contratos longos. Boa diversificação geográfica.'}
+  ],
+  fiagro: [
+    {sym:'KNCA11', name:'Kinea Crédito Agronegócio', dy:12.5, p:9.80, set:'Crédito Rural', desc:'FIAGRO de crédito agro. DY ALTÍSSIMO. Risco crédito do setor agro.'},
+    {sym:'VGIA11', name:'Valora Crédito Agro', dy:14.0, p:9.30, set:'Crédito Rural', desc:'FIAGRO de crédito. DY top do setor. Liquidez moderada.'},
+    {sym:'RZAG11', name:'Riza Akin Agro', dy:13.5, p:9.60, set:'Crédito Rural', desc:'FIAGRO Riza. Recebíveis do agro brasileiro. DY mensal alto.'},
+    {sym:'XPCA11', name:'XP Crédito Agrícola', dy:12.0, p:9.50, set:'Crédito Rural', desc:'XP Inc. Recebíveis ligados a CDI+spread.'}
+  ],
+  rendaFixa: [
+    {nome:'Tesouro Selic 2029', tipo:'Tesouro', rent:'Selic + 0,10%', dy:11.75, liq:'D+1', risco:'Baixíssimo', desc:'Mais conservador. Acompanha a taxa Selic. Ideal pra reserva.'},
+    {nome:'Tesouro IPCA+ 2035', tipo:'Tesouro', rent:'IPCA + 6,30%', dy:12.50, liq:'D+1', risco:'Baixíssimo', desc:'Proteção contra inflação. Travar juro real alto. Longo prazo.'},
+    {nome:'CDB Liquidez Diária 110% CDI', tipo:'CDB', rent:'110% do CDI', dy:13.00, liq:'D+0', risco:'Baixo (FGC)', desc:'Para reserva de emergência. Liquidez total. FGC garante até R$ 250 mil.'},
+    {nome:'CDB 120% CDI vencimento 2 anos', tipo:'CDB', rent:'120% do CDI', dy:14.10, liq:'Vencimento', risco:'Baixo (FGC)', desc:'Maior rentabilidade, sem liquidez. FGC garante. Bom pra montar carteira.'},
+    {nome:'LCI/LCA 95% CDI isenta IR', tipo:'LCI/LCA', rent:'95% CDI ISENTA', dy:11.20, liq:'90 dias', risco:'Baixo (FGC)', desc:'Isento de IR — equivale a ~13% líquido. Carência. Ótimo pra médio prazo.'}
+  ]
+};
+
+function calcDividendos(qtde, preco, dyAnual){
+  const totalInvestido = qtde * preco;
+  const divAnualTotal = totalInvestido * (dyAnual/100);
+  const divMensal = divAnualTotal / 12;
+  return {investido:totalInvestido, anual:divAnualTotal, mensal:divMensal};
+}
+
+function renderInvestirTab(ct){
+  // Sub-tabs
+  const sub = S.invSub || 'visao';
+  const subs = [
+    {k:'visao',l:'🎯 Visão'},
+    {k:'acoes',l:'📈 Ações DY'},
+    {k:'fii',l:'🏢 FIIs'},
+    {k:'fiagro',l:'🌾 FIAGROs'},
+    {k:'rf',l:'🏦 Renda Fixa'},
+    {k:'sim',l:'🧮 Simular'},
+    {k:'historico',l:'📅 Histórico'}
+  ];
+  const bar = h('div',{style:{display:'flex',gap:'6px',overflowX:'auto',marginBottom:'14px',padding:'4px 0'}});
+  for(const s of subs){
+    bar.append(h('button',{className:'tab'+(sub===s.k?' on':''),style:{flexShrink:'0',padding:'8px 14px',fontSize:'12px',whiteSpace:'nowrap'},
+      on:{click:()=>{S.invSub=s.k;render()}}},s.l));
+  }
+  ct.append(bar);
+
+  // ═══ VISÃO GERAL ═══
+  if(sub==='visao'){
+    const tE=tot(S.ent), tS=tot(S.sai), saldo=tE-tS;
+    const invTotal = tInv();
+    const targetMonthly = parseFloat(S.dividendTarget||0) || 0;
+    const dyAlvo = 8;
+    const patrimonioPraTarget = targetMonthly > 0 ? (targetMonthly * 12) / (dyAlvo/100) : 0;
+    const faltaPatrimonio = Math.max(0, patrimonioPraTarget - invTotal);
+    const aportePraMeta = parseFloat(S.invPct||10)*tE/100;
+    const mesesAteMeta = aportePraMeta > 0 ? Math.ceil(faltaPatrimonio / aportePraMeta) : 0;
+
+    // Header com KPIs
+    ct.append(h('div',{className:'card',style:{background:'linear-gradient(135deg,#7c3aed,#5b21b6)',border:'none'}},
+      h('div',{style:{textAlign:'center',color:'#fff'}},
+        h('div',{style:{fontSize:'11px',opacity:'0.8',letterSpacing:'2px',fontWeight:'700'}},'PATRIMÔNIO INVESTIDO'),
+        h('div',{style:{fontSize:'32px',fontWeight:'900',margin:'8px 0'}},fmt(invTotal)),
+        h('div',{style:{display:'flex',justifyContent:'space-around',marginTop:'10px',paddingTop:'10px',borderTop:'1px solid rgba(255,255,255,0.2)'}},
+          h('div',null,h('div',{style:{fontSize:'10px',opacity:'0.7'}},'DY MÉDIO'),h('div',{style:{fontSize:'18px',fontWeight:'800'}},dyAlvo+'%')),
+          h('div',null,h('div',{style:{fontSize:'10px',opacity:'0.7'}},'DIVIDENDOS/MÊS'),h('div',{style:{fontSize:'18px',fontWeight:'800'}},fmt(invTotal*(dyAlvo/100)/12))),
+          h('div',null,h('div',{style:{fontSize:'10px',opacity:'0.7'}},'DIVIDENDOS/ANO'),h('div',{style:{fontSize:'18px',fontWeight:'800'}},fmt(invTotal*(dyAlvo/100))))
+        )
+      )
+    ));
+
+    // Meta de dividendos passivos
+    ct.append(h('div',{className:'card',style:{border:'2px solid #d4af37'}},
+      h('h3',{style:{color:'#d4af37',margin:'0 0 10px'}},'🎯 Meta: viver de dividendos'),
+      h('div',{style:{fontSize:'12px',color:'var(--text2)',marginBottom:'10px'}},'Defina quanto quer receber por mês de renda passiva:'),
+      h('div',{style:{display:'flex',gap:'10px',alignItems:'center',marginBottom:'12px'}},
+        h('span',{style:{fontSize:'12px',color:'var(--text2)',fontWeight:'700'}},'R$'),
+        h('input',{type:'number',value:String(targetMonthly),placeholder:'5000',style:{flex:'1',padding:'10px',fontSize:'18px',fontWeight:'800',color:'#d4af37'},
+          on:{input:e=>{S.dividendTarget=e.target.value;save();render()}}}),
+        h('span',{style:{fontSize:'12px',color:'var(--text2)'}},'/mês')
+      ),
+      targetMonthly > 0 ? h('div',null,
+        h('div',{style:{padding:'10px',background:'rgba(212,175,55,.1)',borderRadius:'8px',fontSize:'13px',marginBottom:'8px'}},
+          h('b',{style:{color:'#d4af37'}},'📊 Patrimônio necessário:'),
+          h('div',{style:{fontSize:'20px',fontWeight:'900',color:'#fff',marginTop:'4px'}},fmt(patrimonioPraTarget)),
+          h('div',{style:{fontSize:'11px',color:'var(--text2)'}},'Com DY médio de '+dyAlvo+'% ao ano')
+        ),
+        faltaPatrimonio > 0 ? h('div',{style:{padding:'10px',background:'rgba(239,68,68,.1)',borderRadius:'8px',fontSize:'13px',marginBottom:'8px'}},
+          h('b',{style:{color:'#ef4444'}},'❌ Falta investir:'),' ',h('span',{style:{fontWeight:'900'}},fmt(faltaPatrimonio))
+        ) : h('div',{style:{padding:'10px',background:'rgba(34,197,94,.1)',borderRadius:'8px',fontSize:'13px',marginBottom:'8px',color:'#22c55e',fontWeight:'800'}},
+          '✅ META ATINGIDA! Você já recebe '+fmt(invTotal*(dyAlvo/100)/12)+'/mês.'
+        ),
+        aportePraMeta > 0 && mesesAteMeta > 0 ? h('div',{style:{padding:'10px',background:'rgba(168,85,247,.1)',borderRadius:'8px',fontSize:'13px'}},
+          h('b',{style:{color:'#a855f7'}},'⏰ Aportando '+fmt(aportePraMeta)+'/mês:'),
+          h('div',{style:{fontSize:'18px',fontWeight:'900',marginTop:'4px'}},mesesAteMeta+' meses ('+(Math.floor(mesesAteMeta/12))+' anos e '+(mesesAteMeta%12)+' meses)')
+        ) : null
+      ) : h('div',{style:{padding:'10px',background:'rgba(0,0,0,.3)',borderRadius:'8px',fontSize:'12px',color:'var(--text2)'}},
+        '💡 Digite uma meta acima pra ver quanto patrimônio precisa e quanto tempo demora.'
+      )
+    ));
+
+    // Perfil + alocação
+    ct.append(h('div',{className:'card'},
+      h('h3',{style:{color:'#a855f7'}},'🧠 Perfil de Risco'),
+      h('div',{style:{display:'flex',gap:'4px',marginBottom:'10px'}},
+        h('button',{className:'btn'+(S.perfilInv==='conservador'?' btn-b':''),style:{flex:'1',fontSize:'12px',padding:'8px'},
+          on:{click:()=>{S.perfilInv='conservador';save();render()}}},'🛡️ Conservador'),
+        h('button',{className:'btn'+(S.perfilInv==='moderado'?' btn-purple':''),style:{flex:'1',fontSize:'12px',padding:'8px'},
+          on:{click:()=>{S.perfilInv='moderado';save();render()}}},'⚖️ Moderado'),
+        h('button',{className:'btn'+(S.perfilInv==='agressivo'?' btn-r':''),style:{flex:'1',fontSize:'12px',padding:'8px'},
+          on:{click:()=>{S.perfilInv='agressivo';save();render()}}},'⚡ Agressivo')
+      ),
+      h('div',{style:{display:'flex',gap:'8px',alignItems:'center'}},
+        h('span',{style:{fontSize:'12px',fontWeight:'600'}},'% renda investir:'),
+        h('input',{type:'range',min:'1',max:'50',value:String(S.invPct),style:{flex:'1',accentColor:'#a855f7'},on:{input:e=>{S.invPct=parseInt(e.target.value);save();render()}}}),
+        h('span',{style:{fontWeight:'800',color:'#a855f7'}},S.invPct+'%')
+      )
+    ));
+
+    // CTA: ver melhores ativos
+    ct.append(h('div',{className:'card empty'},
+      h('div',{style:{fontSize:'12px',marginBottom:'10px'}},'Clique nas abas acima pra ver os melhores ativos por categoria, simular dividendos, ou ver seu histórico.'),
+      h('div',{style:{display:'flex',gap:'6px',justifyContent:'center'}},
+        h('button',{className:'btn btn-g',style:{fontSize:'12px'},on:{click:()=>{S.invSub='acoes';render()}}},'📈 Ver Ações DY'),
+        h('button',{className:'btn btn-purple',style:{fontSize:'12px'},on:{click:()=>{S.invSub='fii';render()}}},'🏢 Ver FIIs'),
+        h('button',{className:'btn btn-o',style:{fontSize:'12px'},on:{click:()=>{S.invSub='fiagro';render()}}},'🌾 FIAGROs')
+      )
+    ));
+  }
+
+  // ═══ AÇÕES / FIIs / FIAGROs ═══
+  if(sub==='acoes' || sub==='fii' || sub==='fiagro'){
+    const lista = sub==='acoes' ? ATIVOS_INVESTIR.acoes : sub==='fii' ? ATIVOS_INVESTIR.fii : ATIVOS_INVESTIR.fiagro;
+    const titulo = sub==='acoes' ? '📈 Melhores Ações por Dividend Yield' : sub==='fii' ? '🏢 Melhores FIIs (Fundos Imobiliários)' : '🌾 Melhores FIAGROs (Fundos do Agro)';
+    ct.append(h('div',{style:{marginBottom:'10px'}},
+      h('h3',{style:{color:'#d4af37',fontSize:'16px',margin:'0 0 4px'}},titulo),
+      h('div',{style:{fontSize:'11px',color:'var(--text2)'}},'Ranking por DY médio histórico. Toque pra ver detalhes e simular dividendos.')
+    ));
+
+    const sorted = [...lista].sort((a,b)=>b.dy-a.dy);
+    sorted.forEach((a,idx)=>{
+      const tooltip = idx<3 ? ['🥇','🥈','🥉'][idx] : (idx+1)+'°';
+      ct.append(h('div',{className:'card',style:{cursor:'pointer',transition:'transform .15s',padding:'14px'},
+        on:{click:()=>{S.invSelected=a.sym;S.invSub='sim';save();render()}}},
+        h('div',{style:{display:'flex',gap:'12px',alignItems:'center'}},
+          h('div',{style:{width:'50px',height:'50px',borderRadius:'12px',background:'linear-gradient(135deg,#d4af37,#a87f1d)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:'900',color:'#000',fontSize:'14px'}},tooltip),
+          h('div',{style:{flex:'1'}},
+            h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
+              h('div',null,
+                h('div',{style:{fontSize:'15px',fontWeight:'900'}},a.sym),
+                h('div',{style:{fontSize:'11px',color:'var(--text2)'}},a.name+' · '+a.set)
+              ),
+              h('div',{style:{textAlign:'right'}},
+                h('div',{style:{fontSize:'20px',fontWeight:'900',color:a.dy>=10?'#22c55e':a.dy>=7?'#d4af37':'#a855f7'}},a.dy.toFixed(1)+'%'),
+                h('div',{style:{fontSize:'10px',color:'var(--text3)'}},'DY anual')
+              )
+            ),
+            h('div',{style:{display:'flex',gap:'6px',marginTop:'8px',flexWrap:'wrap'}},
+              h('span',{className:'pill'},'R$ '+a.p.toFixed(2)),
+              h('span',{className:'pill',style:{background:'rgba(34,197,94,.15)',color:'#22c55e'}},'R$ '+(a.p*a.dy/100/12).toFixed(2)+'/mês por cota')
+            )
+          )
+        ),
+        h('div',{style:{marginTop:'10px',padding:'8px',background:'rgba(0,0,0,.25)',borderRadius:'8px',fontSize:'11px',color:'var(--text2)',lineHeight:'1.4'}},a.desc)
+      ));
+    });
+  }
+
+  // ═══ RENDA FIXA ═══
+  if(sub==='rf'){
+    ct.append(h('div',{style:{marginBottom:'10px'}},
+      h('h3',{style:{color:'#22c55e',fontSize:'16px',margin:'0 0 4px'}},'🏦 Renda Fixa — Tesouro, CDB, LCI/LCA'),
+      h('div',{style:{fontSize:'11px',color:'var(--text2)'}},'Rentabilidades médias atuais (Selic alta favorece RF).')
+    ));
+    for(const rf of ATIVOS_INVESTIR.rendaFixa){
+      ct.append(h('div',{className:'card'},
+        h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:'8px'}},
+          h('div',null,
+            h('div',{style:{fontSize:'15px',fontWeight:'900'}},rf.nome),
+            h('div',{style:{fontSize:'11px',color:'var(--text2)'}},rf.tipo+' · Risco '+rf.risco+' · Liquidez '+rf.liq)
+          ),
+          h('div',{style:{textAlign:'right'}},
+            h('div',{style:{fontSize:'18px',fontWeight:'900',color:'#22c55e'}},'~'+rf.dy.toFixed(1)+'%'),
+            h('div',{style:{fontSize:'10px',color:'var(--text3)'}},'a.a. atual')
+          )
+        ),
+        h('div',{style:{padding:'10px',background:'rgba(34,197,94,.08)',borderRadius:'8px',fontSize:'12px',marginBottom:'6px',fontWeight:'700'}},'Como rende: ',h('span',null,rf.rent)),
+        h('div',{style:{fontSize:'11px',color:'var(--text2)',lineHeight:'1.4'}},rf.desc)
+      ));
+    }
+  }
+
+  // ═══ SIMULADOR ═══
+  if(sub==='sim'){
+    const sym = S.invSelected || 'ITSA4';
+    const ativo = [...ATIVOS_INVESTIR.acoes, ...ATIVOS_INVESTIR.fii, ...ATIVOS_INVESTIR.fiagro].find(a=>a.sym===sym) || ATIVOS_INVESTIR.acoes[0];
+    const qtde = parseFloat(S.simQtde||100) || 100;
+    const calc = calcDividendos(qtde, ativo.p, ativo.dy);
+
+    ct.append(h('div',{className:'card',style:{background:'linear-gradient(135deg,#22c55e,#15803d)',border:'none',color:'#fff'}},
+      h('div',{style:{fontSize:'11px',opacity:'.85',letterSpacing:'2px',fontWeight:'700'}},'SIMULADOR DE DIVIDENDOS'),
+      h('div',{style:{fontSize:'24px',fontWeight:'900',marginTop:'6px'}},ativo.sym+' · '+ativo.name),
+      h('div',{style:{fontSize:'12px',opacity:'.85',marginTop:'2px'}},ativo.set+' · DY '+ativo.dy.toFixed(1)+'% · cotação R$ '+ativo.p.toFixed(2))
+    ));
+
+    // Seletor de ativo
+    ct.append(h('div',{className:'card'},
+      h('div',{style:{fontSize:'12px',color:'var(--text2)',marginBottom:'6px',fontWeight:'700'}},'TROCAR ATIVO'),
+      h('div',{style:{display:'flex',gap:'6px',overflowX:'auto',paddingBottom:'4px'}},
+        [...ATIVOS_INVESTIR.acoes, ...ATIVOS_INVESTIR.fii, ...ATIVOS_INVESTIR.fiagro].slice(0,15).map(a =>
+          h('button',{className:'tab'+(sym===a.sym?' on':''),style:{flexShrink:'0',padding:'8px 12px',fontSize:'11px'},
+            on:{click:()=>{S.invSelected=a.sym;save();render()}}},a.sym))
+      ),
+      h('div',{style:{marginTop:'12px'}},
+        h('div',{style:{fontSize:'12px',color:'var(--text2)',marginBottom:'6px',fontWeight:'700'}},'QUANTAS COTAS / AÇÕES'),
+        h('input',{type:'number',value:String(qtde),placeholder:'100',style:{width:'100%',padding:'12px',fontSize:'18px',fontWeight:'800'},
+          on:{input:e=>{S.simQtde=e.target.value;save();render()}}})
+      )
+    ));
+
+    // Resultados
+    ct.append(h('div',{className:'card'},
+      h('h3',{style:{color:'#22c55e',margin:'0 0 12px'}},'💰 Quanto você vai ganhar'),
+      h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px',marginBottom:'10px'}},
+        h('div',{style:{padding:'12px',background:'rgba(212,175,55,.1)',borderRadius:'10px',border:'1px solid rgba(212,175,55,.3)'}},
+          h('div',{style:{fontSize:'10px',color:'var(--text2)',fontWeight:'700',letterSpacing:'1px'}},'INVESTIMENTO'),
+          h('div',{style:{fontSize:'18px',fontWeight:'900',color:'#d4af37'}},fmt(calc.investido))
+        ),
+        h('div',{style:{padding:'12px',background:'rgba(168,85,247,.1)',borderRadius:'10px',border:'1px solid rgba(168,85,247,.3)'}},
+          h('div',{style:{fontSize:'10px',color:'var(--text2)',fontWeight:'700',letterSpacing:'1px'}},'DY ANUAL'),
+          h('div',{style:{fontSize:'18px',fontWeight:'900',color:'#a855f7'}},ativo.dy.toFixed(1)+'%')
+        )
+      ),
+      h('div',{style:{padding:'14px',background:'rgba(34,197,94,.15)',borderRadius:'10px',border:'2px solid #22c55e',marginBottom:'10px'}},
+        h('div',{style:{fontSize:'11px',color:'var(--text2)',fontWeight:'700',letterSpacing:'1px'}},'DIVIDENDOS POR MÊS'),
+        h('div',{style:{fontSize:'28px',fontWeight:'900',color:'#22c55e',marginTop:'4px'}},fmt(calc.mensal))
+      ),
+      h('div',{style:{padding:'12px',background:'rgba(34,197,94,.08)',borderRadius:'10px'}},
+        h('div',{style:{fontSize:'11px',color:'var(--text2)',fontWeight:'700',letterSpacing:'1px'}},'DIVIDENDOS POR ANO'),
+        h('div',{style:{fontSize:'22px',fontWeight:'900',color:'#22c55e',marginTop:'4px'}},fmt(calc.anual))
+      )
+    ));
+
+    // Projeção 10 anos
+    const projecao = [];
+    let patrimonio = calc.investido;
+    const aporteMensal = parseFloat(S.simAporte||0) || 0;
+    for(let ano=1; ano<=10; ano++){
+      patrimonio = patrimonio * (1 + ativo.dy/100); // reinvestindo
+      patrimonio += aporteMensal * 12;
+      const divAno = patrimonio * (ativo.dy/100);
+      projecao.push({ano, patrimonio: Math.round(patrimonio), divMes: Math.round(divAno/12)});
+    }
+    ct.append(h('div',{className:'card'},
+      h('h3',{style:{color:'#d4af37',margin:'0 0 8px'}},'📊 Projeção 10 anos (com reinvestimento)'),
+      h('div',{style:{fontSize:'12px',color:'var(--text2)',marginBottom:'10px'}},'Reinvestindo todos os dividendos + aportes mensais opcionais'),
+      h('div',{style:{display:'flex',gap:'8px',alignItems:'center',marginBottom:'12px'}},
+        h('span',{style:{fontSize:'12px'}},'Aporte mensal:'),
+        h('input',{type:'number',value:String(aporteMensal),placeholder:'0',style:{flex:'1',padding:'8px'},
+          on:{input:e=>{S.simAporte=e.target.value;save();render()}}})
+      ),
+      h('table',{style:{width:'100%',fontSize:'12px',borderCollapse:'collapse'}},
+        h('thead',null,
+          h('tr',{style:{textAlign:'left',color:'#d4af37',fontWeight:'700'}},
+            h('th',{style:{padding:'6px'}},'Ano'),
+            h('th',{style:{padding:'6px',textAlign:'right'}},'Patrimônio'),
+            h('th',{style:{padding:'6px',textAlign:'right'}},'Div/mês')
+          )
+        ),
+        h('tbody',null,
+          ...projecao.map(p=>h('tr',{style:{borderBottom:'1px solid var(--border)'}},
+            h('td',{style:{padding:'8px'}},p.ano+'°'),
+            h('td',{style:{padding:'8px',textAlign:'right',fontWeight:'700'}},fmt(p.patrimonio)),
+            h('td',{style:{padding:'8px',textAlign:'right',color:'#22c55e',fontWeight:'700'}},fmt(p.divMes))
+          ))
+        )
+      )
+    ));
+  }
+
+  // ═══ HISTÓRICO MENSAL (era o original) ═══
+  if(sub==='historico'){
+    ct.append(h('div',{className:'card',style:{border:'2px solid #a855f7'}},
+      h('h3',{style:{color:'#a855f7'}},'📅 Histórico de Investimentos Mensais'),
+      h('div',{style:{fontSize:'22px',fontWeight:'800',color:'#a855f7',textAlign:'center'}},fmt(tInv()))
+    ));
+    MES.forEach((m,i)=>{
+      const inv=S.inv[i]||{renda:0,investido:0,onde:''};
+      const meta=(parseFloat(inv.renda)||0)*S.invPct/100;
+      const ok=parseFloat(inv.investido)>=meta&&meta>0;
+      ct.append(h('div',{className:'card',style:{background:i%2===0?'var(--card2)':'var(--card)'}},
+        h('div',{style:{display:'flex',alignItems:'center',gap:'8px',marginBottom:'8px'}},
+          h('div',{style:{width:'38px',height:'38px',borderRadius:'10px',background:'#a855f7',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:'800',fontSize:'11px',flexShrink:'0'}},m),
+          h('div',{style:{flex:'1',fontWeight:'600'}},m),
+          ok?h('span',{style:{background:'#22c55e',color:'#fff',padding:'3px 8px',borderRadius:'8px',fontSize:'10px',fontWeight:'700'}},'✓ Meta'):null
+        ),
+        h('div',{className:'row'},
+          inp(inv.renda||'','Renda mês',v=>{S.inv[i]={...inv,renda:parseFloat(v)||0};save();render()},{type:'number'}),
+          inp(inv.investido||'','Investido',v=>{S.inv[i]={...inv,investido:parseFloat(v)||0};save();render()},{type:'number',style:{fontWeight:'700'}})
+        ),
+        h('div',{className:'row'},
+          sel(inv.onde,INVT,v=>{S.inv[i]={...inv,onde:v};save();render()},'Onde investiu?'),
+          h('div',{style:{fontSize:'11px',color:'var(--text3)',padding:'10px 4px'}},'Meta: '+fmt(meta))
+        )
+      ));
+    });
+  }
 }
 
 function renderNewsTab(ct){
@@ -2637,35 +2981,7 @@ function render(){
 
   // ═══ INVESTIR ═══
   if(S.tab===4){
-    ct.append(h('div',{className:'card',style:{border:'2px solid #a855f7'}},
-      h('h3',{style:{color:'#a855f7'}},'📈 Meta de Investimento'),
-      h('div',{style:{display:'flex',gap:'8px',alignItems:'center',marginBottom:'8px'}},
-        h('span',{style:{fontSize:'12px',fontWeight:'600'}},'% da renda:'),
-        h('input',{type:'range',min:'1',max:'50',value:String(S.invPct),style:{flex:'1',accentColor:'#a855f7'},on:{input:e=>{S.invPct=parseInt(e.target.value);save();render()}}}),
-        h('span',{style:{fontWeight:'800',color:'#a855f7',fontSize:'16px'}},S.invPct+'%')
-      ),
-      h('div',{style:{fontSize:'22px',fontWeight:'800',color:'#a855f7',textAlign:'center'}},fmt(tInv))
-    ));
-    MES.forEach((m,i)=>{
-      const inv=S.inv[i]||{renda:0,investido:0,onde:''};
-      const meta=(parseFloat(inv.renda)||0)*S.invPct/100;
-      const ok=parseFloat(inv.investido)>=meta&&meta>0;
-      ct.append(h('div',{className:'card',style:{background:i%2===0?'var(--card2)':'var(--card)'}},
-        h('div',{style:{display:'flex',alignItems:'center',gap:'8px',marginBottom:'8px'}},
-          h('div',{style:{width:'38px',height:'38px',borderRadius:'10px',background:'#a855f7',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:'800',fontSize:'11px',flexShrink:'0'}},m),
-          h('div',{style:{flex:'1',fontWeight:'600'}},m),
-          ok?h('span',{style:{background:'#22c55e',color:'#fff',padding:'3px 8px',borderRadius:'8px',fontSize:'10px',fontWeight:'700'}},'✓ Meta'):null
-        ),
-        h('div',{className:'row'},
-          inp(inv.renda||'','Renda mês',v=>{S.inv[i]={...inv,renda:parseFloat(v)||0};save();render()},{type:'number'}),
-          inp(inv.investido||'','Investido',v=>{S.inv[i]={...inv,investido:parseFloat(v)||0};save();render()},{type:'number',style:{fontWeight:'700'}})
-        ),
-        h('div',{className:'row'},
-          sel(inv.onde,INVT,v=>{S.inv[i]={...inv,onde:v};save();render()},'Onde investiu?'),
-          h('div',{style:{fontSize:'11px',color:'var(--text3)',padding:'10px 4px'}},'Meta: '+fmt(meta))
-        )
-      ));
-    });
+    renderInvestirTab(ct);
   }
 
   // ═══ METAS ═══
@@ -3545,7 +3861,7 @@ function render(){
           h('a',{href:'https://t.me/MeuAgenteFinanceiroBot',target:'_blank',className:'btn btn-g',style:{display:'block',textAlign:'center',marginTop:'8px',textDecoration:'none'}},'📲 Abrir bot no Telegram')
         ),
 
-        h('button',{className:'btn',style:{width:'100%',marginTop:'12px',padding:'12px'},on:{click:()=>{S.modal=null;render()}}},'Fechar')
+        h('button',{className:'btn btn-g',style:{width:'100%',marginTop:'12px',padding:'14px',fontSize:'15px',fontWeight:'800'},on:{click:()=>{S.modal=null;render()}}},'✓ Fechar')
       )
     );
     document.body.appendChild(md);
