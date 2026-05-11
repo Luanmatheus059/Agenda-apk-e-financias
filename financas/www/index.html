@@ -108,6 +108,16 @@ button{font-family:inherit;cursor:pointer;border:none;outline:none;transition:al
 .kpi .l{font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase}
 .alert-row{display:flex;align-items:center;gap:8px;padding:8px;background:var(--card2);border-radius:8px;margin-bottom:6px;font-size:12px}
 .diary-row{padding:10px;background:var(--card2);border-radius:10px;margin-bottom:6px;border-left:3px solid}
+.tv-container{background:var(--bg);border-radius:12px;padding:6px;margin-bottom:10px;border:1px solid var(--border)}
+.tv-container .tradingview-widget-container{min-height:200px}
+.symbol-input{display:flex;gap:6px;margin-bottom:8px}
+.chip{padding:6px 10px;border-radius:20px;font-size:11px;font-weight:700;background:var(--bg2);color:var(--text2);border:1px solid var(--border);cursor:pointer}
+.chip.on{background:var(--accent);color:#052e16}
+.chip-row{display:flex;gap:4px;overflow-x:auto;padding:4px 0 8px;scrollbar-width:none}
+.chip-row::-webkit-scrollbar{display:none}
+.feature-card{background:linear-gradient(135deg,#14532d,#0a3018);border-radius:16px;padding:16px;margin-bottom:10px;border:1px solid var(--border);position:relative;overflow:hidden}
+.feature-card .glow{position:absolute;top:-50%;right:-50%;width:200%;height:200%;background:radial-gradient(circle,rgba(34,197,94,.1),transparent 70%);pointer-events:none}
+.feature-card h3{position:relative;z-index:1}
 </style>
 </head>
 <body>
@@ -218,6 +228,27 @@ let S={
 function save(){
   ['ent','sai','aquisicao','aquisHist','invPct','inv','metas','sheetsURL','trello','market','perfilInv','watchlist','alerts','diary','deepseekKey','aiAnalysis'].forEach(k=>LS.set(k,S[k]));
   scheduleSmartReminders();
+}
+
+// ─── TradingView widgets (mesmos da XP/Itaú/BTG) ───
+function injectTV(containerId, scriptSrc, config){
+  setTimeout(()=>{
+    const c = document.getElementById(containerId);
+    if(!c) return;
+    c.innerHTML = '';
+    const wrap = document.createElement('div');
+    wrap.className = 'tradingview-widget-container';
+    const widget = document.createElement('div');
+    widget.className = 'tradingview-widget-container__widget';
+    wrap.appendChild(widget);
+    const s = document.createElement('script');
+    s.type = 'text/javascript';
+    s.async = true;
+    s.src = scriptSrc;
+    s.innerHTML = JSON.stringify(config);
+    wrap.appendChild(s);
+    c.appendChild(wrap);
+  }, 60);
 }
 
 // ─── AGENTE FINANCEIRO ───
@@ -360,16 +391,27 @@ ${ds?`HISTÓRICO DO TRADER:
 - Drawdown máximo: R$ ${ds.maxDD.toFixed(2)}`:''}`;
 
     const messages = [
-      {role:'system',content:`Você é um analista educacional de mercado financeiro brasileiro, sério e sem hype. Suas regras:
-1. NUNCA dê recomendação direta de compra/venda específica
-2. Sempre baseie em fatos: dados históricos, regras de gestão de risco (2% por trade, risco/retorno mínimo 1:2)
-3. Quando comentar tendência, mencione múltiplos cenários (alta/baixa/lateral) com probabilidades aproximadas
-4. Sempre lembre que mercado é incerto e nenhuma análise garante resultado
-5. Foque em educação: explique POR QUÊ certos números/sinais são relevantes
-6. Use markdown simples (negrito com **)
-7. Responda em português brasileiro, direto ao ponto, máximo 500 palavras
-8. Estruture: Contexto Atual / Pontos de Atenção / Sugestões de Estudo
-9. Se notar problema na situação financeira (saldo negativo, gastos altos, etc), priorize alertar sobre isso antes de falar de investimento`},
+      {role:'system',content:`Você é um analista sênior de mercado financeiro do nível CFA / CGA da B3. Estilo: direto, profissional, sem hype. Pense como gestor de fundo multimercado falando com investidor experiente.
+
+REGRAS RÍGIDAS:
+1. NUNCA dê ordem direta tipo "compre X agora" ou "venda Y". Use linguagem condicional ("considerando o cenário, ativos defensivos como X podem fazer sentido SE...")
+2. Sempre cite dados concretos: P/L histórico, dividend yield, ROE, volatilidade, beta quando relevante
+3. Use frameworks reais: Análise top-down (macro→setor→ativo), gestão de risco (2% rule, Kelly Criterion, sizing por volatilidade)
+4. Apresente 3 cenários: bullish/neutro/bearish com gatilhos pra cada um
+5. Cite eventos econômicos recentes/futuros relevantes (Copom, NFP, CPI, balanços)
+6. Avalie SE a alocação 50/30/20 do usuário condiz com seu perfil declarado
+7. Se a watchlist tem ativos correlacionados (todos beta>1 ou todos do mesmo setor), aponte risco de concentração
+8. Se P&L do diário do usuário mostra drawdown alto e R-multiple<0.5, SEJA DIRETO: "Pare de operar e estude antes de continuar"
+9. Sempre termine com "DISCLAIMER: análise educacional, não recomendação personalizada de investimento"
+
+FORMATO: markdown limpo. Use **negrito** pra destaques, listas com -. Estrutura:
+**📈 PANORAMA MACRO** (2-3 parágrafos)
+**🎯 SUA SITUAÇÃO ATUAL** (pontos fortes + alertas)
+**🧭 OPORTUNIDADES POR CLASSE DE ATIVO** (renda fixa / variável / cripto / internacional)
+**⚠️ RISCOS A MONITORAR** (3-5 pontos)
+**📚 ESTUDE ANTES DE AGIR** (links/conceitos pra aprofundar)
+
+Idioma: português BR. Máximo 700 palavras. Seja útil, não genérico.`},
       {role:'user',content:`Analise minha situação financeira e o mercado hoje. Me dê uma visão profissional, educacional, considerando meu perfil ${S.perfilInv}. Dados:\n\n${context}`}
     ];
 
@@ -380,13 +422,19 @@ ${ds?`HISTÓRICO DO TRADER:
     });
     if(!res.ok){
       const err = await res.text();
-      throw new Error('API erro '+res.status+': '+err.slice(0,200));
+      throw new Error('HTTP '+res.status+' — '+(err.slice(0,200)||'resposta vazia'));
     }
     const data = await res.json();
-    const text = data.choices?.[0]?.message?.content || 'Sem resposta';
+    if(data.error){
+      throw new Error(data.error.message || JSON.stringify(data.error));
+    }
+    const text = data.choices?.[0]?.message?.content;
+    if(!text || !text.trim()){
+      throw new Error('IA retornou resposta vazia. Verifique sua API key tem créditos.');
+    }
     S.aiAnalysis = {ts:Date.now(), text};
     save();
-    showToast('🤖 Análise IA gerada');
+    showToast('🤖 Análise IA gerada com sucesso!');
   }catch(e){
     console.error(e);
     showToast('Erro IA: '+e.message);
@@ -1615,12 +1663,86 @@ function render(){
     });
   }
 
-  // ═══ MERCADO (NOVA) ═══
+  // ═══ MERCADO ═══
   if(S.tab===6){
     ct.append(h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'10px'}},
       h('h3',{style:{fontSize:'16px'}},'📰 Mercado em tempo real'),
       h('button',{className:'refresh-btn',on:{click:()=>fetchMarket(true)}},S.marketLoading?'⏳ Buscando...':'🔄 Atualizar')
     ));
+    // ─── Ticker Tape TradingView (cotações ao vivo rolando) ───
+    ct.append(h('div',{className:'card',style:{padding:'4px'}},h('div',{id:'tv-ticker',style:{minHeight:'70px'}})));
+    injectTV('tv-ticker','https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js',{
+      symbols:[
+        {description:'Ibovespa',proName:'BMFBOVESPA:IBOV'},
+        {description:'Dólar',proName:'FX_IDC:USDBRL'},
+        {description:'Bitcoin',proName:'BINANCE:BTCBRL'},
+        {description:'PETR4',proName:'BMFBOVESPA:PETR4'},
+        {description:'VALE3',proName:'BMFBOVESPA:VALE3'},
+        {description:'ITUB4',proName:'BMFBOVESPA:ITUB4'},
+        {description:'BBAS3',proName:'BMFBOVESPA:BBAS3'},
+        {description:'S&P 500',proName:'SP:SPX'},
+        {description:'Nasdaq',proName:'NASDAQ:IXIC'}
+      ],
+      showSymbolLogo:true,
+      isTransparent:true,
+      displayMode:'adaptive',
+      colorTheme:'dark',
+      locale:'br'
+    });
+
+    // ─── Heatmap B3 ───
+    ct.append(h('div',{className:'card'},
+      h('h3',null,'🌡️ Mapa de calor B3 (mesmo da XP)'),
+      h('div',{id:'tv-heatmap',style:{height:'380px'}})
+    ));
+    injectTV('tv-heatmap','https://s3.tradingview.com/external-embedding/embed-widget-stock-heatmap.js',{
+      exchanges:['BMFBOVESPA'],
+      dataSource:'BR50',
+      grouping:'sector',
+      blockSize:'market_cap_basic',
+      blockColor:'change',
+      locale:'br',
+      symbolUrl:'',
+      colorTheme:'dark',
+      hasTopBar:false,
+      isDataSetEnabled:false,
+      isZoomEnabled:true,
+      hasSymbolTooltip:true,
+      isMonoSize:false,
+      width:'100%',
+      height:380
+    });
+
+    // ─── Calendário econômico ───
+    ct.append(h('div',{className:'card'},
+      h('h3',null,'📅 Calendário Econômico'),
+      h('div',{id:'tv-calendar',style:{height:'400px'}})
+    ));
+    injectTV('tv-calendar','https://s3.tradingview.com/external-embedding/embed-widget-events.js',{
+      colorTheme:'dark',
+      isTransparent:true,
+      locale:'br',
+      countryFilter:'br,us,eu,cn',
+      importanceFilter:'-1,0,1',
+      width:'100%',
+      height:400
+    });
+
+    // ─── News Timeline ───
+    ct.append(h('div',{className:'card'},
+      h('h3',null,'🗞️ Notícias do Mercado (TradingView)'),
+      h('div',{id:'tv-timeline',style:{height:'420px'}})
+    ));
+    injectTV('tv-timeline','https://s3.tradingview.com/external-embedding/embed-widget-timeline.js',{
+      feedMode:'all_symbols',
+      isTransparent:true,
+      displayMode:'regular',
+      width:'100%',
+      height:420,
+      colorTheme:'dark',
+      locale:'br'
+    });
+
     ct.append(h('div',{style:{fontSize:'10px',color:'var(--text3)',marginBottom:'10px',lineHeight:'1.5'}},
       'Dados via Brapi.dev (gratuito). Atualizado: ',
       S.market.ts ? new Date(S.market.ts).toLocaleTimeString('pt-BR') : 'nunca',
@@ -1683,11 +1805,43 @@ function render(){
     ));
     // Sub-tabs
     const sub = S.agenteSub || 'ia';
-    ct.append(h('div',{className:'subtabs'},
-      ...[['ia','🤖 IA'],['risk','🎯 Risco'],['watch','👁️ Watch'],['diary','📒 Diário']].map(([k,l])=>
-        h('button',{className:'subtab'+(sub===k?' on':''),on:{click:()=>{S.agenteSub=k;render()}}},l)
+    ct.append(h('div',{className:'subtabs',style:{overflowX:'auto',flexWrap:'nowrap'}},
+      ...[['ia','🤖 IA'],['chart','📊 Gráfico'],['risk','🎯 Risco'],['watch','👁️ Watch'],['diary','📒 Diário']].map(([k,l])=>
+        h('button',{className:'subtab'+(sub===k?' on':''),style:{whiteSpace:'nowrap'},on:{click:()=>{S.agenteSub=k;render()}}},l)
       )
     ));
+
+    // ─── Gráfico TradingView (NOVO) ───
+    if(sub==='chart'){
+      const sym = S.tvSymbol || 'BMFBOVESPA:PETR4';
+      ct.append(h('div',{className:'card'},
+        h('h3',null,'📊 Gráfico TradingView profissional'),
+        h('p',{style:{fontSize:'11px',color:'var(--text3)',marginBottom:'10px'}},
+          'Mesma tecnologia que XP, Itaú e BTG usam. Toque no símbolo no canto superior esquerdo do gráfico pra mudar de ativo. Suporta candles, RSI, MACD, Bollinger, tela cheia.'
+        ),
+        h('div',{className:'chip-row'},
+          ...['BMFBOVESPA:IBOV','BMFBOVESPA:PETR4','BMFBOVESPA:VALE3','BMFBOVESPA:ITUB4','BMFBOVESPA:BBAS3','BMFBOVESPA:MGLU3','BMFBOVESPA:WEGE3','BMFBOVESPA:B3SA3','FX_IDC:USDBRL','BINANCE:BTCBRL','NASDAQ:AAPL','NASDAQ:TSLA','NASDAQ:NVDA','SP:SPX'].map(s=>
+            h('button',{className:'chip'+(sym===s?' on':''),on:{click:()=>{S.tvSymbol=s;render()}}}, s.split(':')[1] || s)
+          )
+        ),
+        h('div',{id:'tv-chart',className:'tv-container',style:{height:'480px'}})
+      ));
+      injectTV('tv-chart','https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js',{
+        autosize:true,
+        symbol:sym,
+        interval:'60',
+        timezone:'America/Sao_Paulo',
+        theme:'dark',
+        style:'1',
+        locale:'br',
+        toolbar_bg:'#052e16',
+        enable_publishing:false,
+        allow_symbol_change:true,
+        save_image:false,
+        studies:['RSI@tv-basicstudies','MASimple@tv-basicstudies'],
+        height:480
+      });
+    }
 
     // ─── IA Sub-tab ───
     if(sub==='ia'){
