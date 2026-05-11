@@ -11,6 +11,11 @@
 <link rel="icon" type="image/png" href="../icons/financas-192.png">
 <link rel="apple-touch-icon" href="../icons/financas-180.png">
 <meta name="apple-mobile-web-app-title" content="Finanças">
+<!-- SheetJS para .xlsx -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<!-- pdf.js para .pdf (best-effort) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>if(typeof pdfjsLib!=='undefined')pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 :root{--bg:#052e16;--bg2:#14532d;--bg3:#166534;--card:#14532d;--card2:#1a5c38;--text:#f0fdf4;--text2:#86efac;--text3:#4ade80;--accent:#22c55e;--red:#ef4444;--orange:#f59e0b;--blue:#3b82f6;--purple:#a855f7;--border:#166534;--radius:14px}
@@ -86,7 +91,7 @@ button{font-family:inherit;cursor:pointer;border:none;outline:none;transition:al
 <body>
 <div id="app"></div>
 <div id="toast" class="toast"></div>
-<input type="file" id="fileInput" accept=".csv,.ofx,.txt,.qif,text/csv,text/plain" style="display:none">
+<input type="file" id="fileInput" accept=".csv,.ofx,.txt,.qif,.xlsx,.xls,.pdf,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/pdf" style="display:none">
 <script type="module">
 // ─── Capacitor bridge ───
 const Cap = window.Capacitor;
@@ -167,13 +172,15 @@ let S={
   importTxt:'',
   importPreview:null,    // {entradas:[], saidas:[]}
   importFileName:'',
+  sheetsURL: LS.get('sheetsURL',''),
+  trello: LS.get('trello',{key:'',token:'',boardId:''}),
   bankNotifs:[],
   bankPerm:false,
   notifPerm:'default'
 };
 
 function save(){
-  ['ent','sai','aquisicao','aquisHist','invPct','inv','metas'].forEach(k=>LS.set(k,S[k]));
+  ['ent','sai','aquisicao','aquisHist','invPct','inv','metas','sheetsURL','trello'].forEach(k=>LS.set(k,S[k]));
   scheduleSmartReminders();
 }
 
@@ -384,6 +391,138 @@ function parseExtrato(text, filename){
   return parseCSV(t);
 }
 
+// ─── XLSX parser (SheetJS) ───
+function parseXLSX(arrayBuffer){
+  if(typeof XLSX==='undefined'){ showToast('SheetJS não carregou (sem internet?)'); return []; }
+  try{
+    const wb = XLSX.read(arrayBuffer, {type:'array', cellDates:true});
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet, {header:1, raw:false, dateNF:'dd/mm/yyyy'});
+    const out=[];
+    let started=false;
+    for(const r of rows){
+      if(!r || !r.length) continue;
+      // pula linha que parece header (sem números na maioria das colunas)
+      const hasNums = r.some(c => typeof c==='number' || /^-?\d+([.,]\d+)?$/.test(String(c||'').replace(/[R$\s]/g,'')));
+      if(!started && !hasNums) continue;
+      started=true;
+      // Heurística: data | descrição | valor (ou data | descrição | débito | crédito)
+      let data='', desc='', valor=0;
+      if(r.length>=3){
+        data = parseBRDate(String(r[0]||''));
+        if(r.length>=4){
+          // tenta col 2=débito col 3=crédito
+          const c1 = parseBRMoney(r[2]);
+          const c2 = parseBRMoney(r[3]);
+          if(c1 && !c2) valor = -Math.abs(c1);
+          else if(c2 && !c1) valor = Math.abs(c2);
+          else valor = parseBRMoney(r[r.length-1]);
+          desc = String(r[1]||'');
+        } else {
+          valor = parseBRMoney(r[r.length-1]);
+          desc = String(r[1]||'');
+        }
+      }
+      if(!desc) desc='Transação';
+      if(valor!==0) out.push({data, desc:desc.trim(), valor});
+    }
+    return out;
+  }catch(e){ console.error(e); showToast('Erro lendo .xlsx'); return []; }
+}
+
+// ─── PDF parser (pdf.js) — best-effort ───
+async function parsePDF(arrayBuffer){
+  if(typeof pdfjsLib==='undefined'){ showToast('pdf.js não carregou'); return []; }
+  try{
+    const pdf = await pdfjsLib.getDocument({data:arrayBuffer}).promise;
+    let fullText='';
+    for(let i=1;i<=pdf.numPages;i++){
+      const page = await pdf.getPage(i);
+      const tc = await page.getTextContent();
+      const lineMap = {};
+      // agrupa por Y
+      for(const it of tc.items){
+        const y = Math.round(it.transform[5]);
+        if(!lineMap[y]) lineMap[y]=[];
+        lineMap[y].push({x:it.transform[4], s:it.str});
+      }
+      const ys = Object.keys(lineMap).map(Number).sort((a,b)=>b-a);
+      for(const y of ys){
+        const line = lineMap[y].sort((a,b)=>a.x-b.x).map(o=>o.s).join(' ');
+        fullText += line + '\n';
+      }
+    }
+    // tenta extrair linhas no formato: data ... descrição ... valor
+    const out=[];
+    const lines = fullText.split('\n');
+    const reLine = /(\d{2}\/\d{2}\/\d{2,4})\s+(.+?)\s+(-?R?\$?\s*[\d.,]+)\s*$/;
+    const reDateOnly = /^\s*(\d{2}\/\d{2}\/\d{2,4})\b/;
+    const reAmount = /(-?\s*R?\$?\s*[\d.,]+)\s*(?:C|D)?\s*$/i;
+    for(const raw of lines){
+      const l = raw.trim();
+      if(!l) continue;
+      const m = l.match(reLine);
+      if(m){
+        const data = parseBRDate(m[1]);
+        const valor = parseBRMoney(m[3]);
+        const desc = m[2].trim();
+        if(valor!==0 && desc.length>1) out.push({data, desc, valor});
+      }
+    }
+    if(!out.length){
+      // fallback: avisa que não conseguiu
+      showToast('Não consegui extrair transações deste PDF — formato não reconhecido. Tente CSV/OFX/XLSX.');
+    }
+    return out;
+  }catch(e){ console.error(e); showToast('Erro lendo PDF'); return []; }
+}
+
+// ─── Integration: Google Sheets via "Publicar como CSV" ───
+async function fetchSheetsCSV(url){
+  if(!url) return [];
+  try{
+    const res = await fetch(url);
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const text = await res.text();
+    return parseCSV(text);
+  }catch(e){
+    console.error(e);
+    showToast('Falha ao buscar Sheets: '+e.message);
+    return [];
+  }
+}
+
+// ─── Integration: Trello API ───
+async function fetchTrelloCards(key, token, boardId){
+  if(!key || !token || !boardId) return [];
+  try{
+    const url = `https://api.trello.com/1/boards/${boardId}/cards?key=${encodeURIComponent(key)}&token=${encodeURIComponent(token)}&fields=name,desc,due,labels`;
+    const res = await fetch(url);
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const cards = await res.json();
+    return cards;
+  }catch(e){
+    console.error(e);
+    showToast('Falha Trello: '+e.message);
+    return [];
+  }
+}
+function trelloCardToTx(card){
+  // tenta achar valor monetário no título ou descrição
+  const all = (card.name||'') + ' ' + (card.desc||'');
+  const m = all.match(/R\$\s*([\d.,]+)/) || all.match(/([\d.,]+)\s*reais/i) || all.match(/\b(\d+[.,]\d{2})\b/);
+  if(!m) return null;
+  const valor = parseBRMoney(m[1]);
+  if(valor<=0) return null;
+  // heurística: se tem palavras de entrada usa entrada, senão saída
+  const isIn = /receb|entrada|salário|salario|venda|paga(?:mento)?\s+rec/i.test(all);
+  return {
+    data: card.due ? parseBRDate(card.due.slice(0,10)) : new Date().toLocaleDateString('pt-BR'),
+    desc: card.name,
+    valor: isIn ? Math.abs(valor) : -Math.abs(valor)
+  };
+}
+
 function classifyImport(items){
   const entradas=[], saidas=[];
   for(const it of items){
@@ -403,14 +542,67 @@ function pickFile(){
     const f = e.target.files && e.target.files[0];
     if(!f) return;
     S.importFileName = f.name;
-    const text = await f.text();
-    S.importTxt = text;
-    const items = parseExtrato(text, f.name);
-    S.importPreview = classifyImport(items);
-    showToast(`${items.length} transações detectadas`);
+    const ext = f.name.toLowerCase().split('.').pop();
+    let items=[];
+    showToast('Processando '+f.name+'...');
+    try{
+      if(ext==='xlsx' || ext==='xls'){
+        const buf = await f.arrayBuffer();
+        items = parseXLSX(buf);
+      } else if(ext==='pdf'){
+        const buf = await f.arrayBuffer();
+        items = await parsePDF(buf);
+      } else {
+        // text-based: csv, ofx, txt, qif
+        const text = await f.text();
+        S.importTxt = text;
+        items = parseExtrato(text, f.name);
+      }
+    }catch(err){
+      console.error(err);
+      showToast('Erro lendo arquivo: '+err.message);
+    }
+    S.importPreview = items.length ? classifyImport(items) : null;
+    if(items.length) showToast(`${items.length} transações detectadas`);
+    else showToast('Nenhuma transação encontrada no arquivo');
     render();
   };
   fi.click();
+}
+
+async function syncFromSheets(){
+  const url = S.sheetsURL;
+  if(!url){ showToast('Configure a URL do Sheets primeiro'); return; }
+  showToast('Buscando Sheets...');
+  const items = await fetchSheetsCSV(url);
+  if(items.length){
+    S.importPreview = classifyImport(items);
+    S.importFileName = 'Google Sheets';
+    showToast(`${items.length} linhas de Sheets carregadas`);
+  } else {
+    showToast('Sheets vazio ou inacessível');
+  }
+  render();
+}
+
+async function syncFromTrello(){
+  const {key,token,boardId} = S.trello || {};
+  if(!key || !token || !boardId){ showToast('Configure Trello primeiro'); return; }
+  showToast('Buscando cards Trello...');
+  const cards = await fetchTrelloCards(key, token, boardId);
+  const items=[];
+  for(const c of cards){
+    const tx = trelloCardToTx(c);
+    if(tx) items.push(tx);
+  }
+  if(items.length){
+    S.importPreview = classifyImport(items);
+    S.importFileName = `Trello (${items.length} cards com valor)`;
+    showToast(`${items.length} cards com valor encontrados`);
+  } else {
+    showToast(`${cards.length} cards lidos, mas nenhum com valor monetário`);
+  }
+  render();
 }
 
 function commitImport(){
@@ -898,15 +1090,36 @@ function render(){
       h('div',{className:'modal-c'},
         h('h2',null,'🏦 Importar Extrato'),
         h('p',{style:{fontSize:'12px',color:'var(--text3)',marginBottom:'10px',lineHeight:'1.5'}},
-          'Selecione o arquivo do seu banco (CSV, OFX, TXT). O app detecta o formato, separa entradas/saídas automaticamente e categoriza pelas palavras-chave.'
+          'Importe de 4 fontes diferentes — todas geram preview antes de confirmar.'
         ),
+        h('div',{style:{fontSize:'11px',color:'var(--text3)',fontWeight:'700',marginBottom:'4px'}},'1️⃣ ARQUIVO LOCAL'),
         h('div',{className:'file-drop',on:{click:pickFile}},
           h('div',{style:{fontSize:'30px',marginBottom:'6px'}},'📁'),
-          h('div',{style:{fontWeight:'700',marginBottom:'2px'}},S.importFileName?S.importFileName:'Escolher arquivo do celular'),
-          h('div',{style:{fontSize:'11px',color:'var(--text3)'}},S.importFileName?'Toque pra trocar':'CSV, OFX, TXT ou QIF')
+          h('div',{style:{fontWeight:'700',marginBottom:'2px'}},S.importFileName && !S.importFileName.startsWith('Google') && !S.importFileName.startsWith('Trello')?S.importFileName:'Escolher arquivo do celular'),
+          h('div',{style:{fontSize:'11px',color:'var(--text3)'}},'CSV · OFX · TXT · QIF · XLSX · PDF')
         ),
+        h('div',{style:{fontSize:'11px',color:'var(--text3)',fontWeight:'700',margin:'12px 0 4px'}},'2️⃣ GOOGLE SHEETS'),
+        h('div',{className:'tip',style:{flexDirection:'column',alignItems:'stretch'}},
+          h('div',{style:{fontSize:'11px',color:'var(--text3)',marginBottom:'6px'}},
+            'Na sua planilha: Arquivo → Compartilhar → Publicar na web → Toda planilha → CSV → Publicar. Cola a URL aqui:'
+          ),
+          inp(S.sheetsURL,'https://docs.google.com/spreadsheets/d/.../pub?output=csv',v=>{S.sheetsURL=v;save()},{style:{fontSize:'11px',marginBottom:'6px'}}),
+          h('button',{className:'btn btn-b',style:{padding:'8px',fontSize:'12px'},on:{click:syncFromSheets}},'🔄 Sincronizar Sheets agora')
+        ),
+        h('div',{style:{fontSize:'11px',color:'var(--text3)',fontWeight:'700',margin:'12px 0 4px'}},'3️⃣ TRELLO'),
+        h('div',{className:'tip',style:{flexDirection:'column',alignItems:'stretch'}},
+          h('div',{style:{fontSize:'11px',color:'var(--text3)',marginBottom:'6px'}},
+            'Pega Key e Token em ',h('a',{href:'https://trello.com/app-key',target:'_blank',style:{color:'#3b82f6'}},'trello.com/app-key'),
+            '. Board ID é a parte depois de /b/ na URL do quadro. Cards com R$X no título/desc viram transações.'
+          ),
+          inp(S.trello.key,'Key',v=>{S.trello={...S.trello,key:v};save()},{style:{fontSize:'11px',marginBottom:'4px'}}),
+          inp(S.trello.token,'Token',v=>{S.trello={...S.trello,token:v};save()},{style:{fontSize:'11px',marginBottom:'4px'}}),
+          inp(S.trello.boardId,'Board ID (ex: AbC123De)',v=>{S.trello={...S.trello,boardId:v};save()},{style:{fontSize:'11px',marginBottom:'6px'}}),
+          h('button',{className:'btn btn-b',style:{padding:'8px',fontSize:'12px'},on:{click:syncFromTrello}},'🔄 Importar cards do Trello')
+        ),
+        h('div',{style:{fontSize:'11px',color:'var(--text3)',fontWeight:'700',margin:'12px 0 4px'}},'4️⃣ COLAR TEXTO'),
         h('details',null,
-          h('summary',{style:{fontSize:'12px',color:'var(--text3)',cursor:'pointer',marginBottom:'8px'}},'Ou colar texto direto'),
+          h('summary',{style:{fontSize:'12px',color:'var(--text3)',cursor:'pointer',marginBottom:'8px'}},'Mostrar área de texto'),
           h('textarea',{placeholder:'10/01/2026;Salário;5000\n12/01/2026;Mercado;-350',style:{marginBottom:'10px'},on:{input:e=>{
             S.importTxt=e.target.value;
             const items = parseExtrato(e.target.value, '');
