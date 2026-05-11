@@ -90,6 +90,11 @@ jobs:
             cp -rv android-overrides/java/* android/app/src/main/java/
           fi
 
+          # Copy custom icons (mipmap-*)
+          if [ -d android-overrides/res ]; then
+            cp -rv android-overrides/res/* android/app/src/main/res/
+          fi
+
           # Patch strings.xml app name
           STRINGS=android/app/src/main/res/values/strings.xml
           if [ -f "$STRINGS" ]; then

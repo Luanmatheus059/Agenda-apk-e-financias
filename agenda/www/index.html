@@ -70,11 +70,8 @@ button{font-family:inherit;cursor:pointer;border:none;outline:none;transition:al
 // ─── Capacitor bridge (works as native app or pure web) ───
 const isNative = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
 let LocalNotifications = null;
-if (isNative) {
-  try {
-    const mod = await import('@capacitor/local-notifications');
-    LocalNotifications = mod.LocalNotifications;
-  } catch (e) { console.warn('LocalNotifications not available', e); }
+if (isNative && window.Capacitor && window.Capacitor.Plugins) {
+  LocalNotifications = window.Capacitor.Plugins.LocalNotifications || null;
 }
 
 const DAYS=["Segunda","Terça","Quarta","Quinta","Sexta","Sábado","Domingo"];
