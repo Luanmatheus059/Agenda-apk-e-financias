@@ -1054,6 +1054,152 @@ async function scheduleSmartReminders(){
 }
 function tot(arr){return arr.reduce((s,e)=>s+(parseFloat(e.valor)||0),0)}
 
+// ─── AGENDAMENTO AGRESSIVO DE NOTIFICAÇÕES (48h, variadas) ───
+// Cria 30-60 notificações com conteúdo diverso pras próximas 48h.
+// Chamado SEMPRE que app abre — re-agenda com snapshot atual do mercado.
+async function scheduleAggressiveNotifications(){
+  if(!isNative || !LocalNotifications || S.notifPerm!=='granted') return;
+
+  // Garante canal
+  try{
+    await LocalNotifications.createChannel({
+      id:'financas-default', name:'Lembretes Finanças',
+      description:'Atualizações de mercado, notícias e setups',
+      importance:5, visibility:1, vibration:true, lights:true, lightColor:'#d4af37'
+    });
+  }catch(e){}
+
+  // Cancela existentes pra evitar duplicação
+  try{
+    const p = await LocalNotifications.getPending();
+    if(p.notifications?.length){
+      await LocalNotifications.cancel({notifications:p.notifications.map(n=>({id:n.id}))});
+    }
+  }catch(e){}
+
+  // Snapshot do mercado
+  const ibov = (S.market.indices||[]).find(i=>i.symbol==='IBOV');
+  const usd  = (S.market.indices||[]).find(i=>String(i.symbol).includes('USD'));
+  const btc  = (S.market.indices||[]).find(i=>i.symbol==='BTC');
+  const mSnap = `IBOV ${ibov?(ibov.chg>=0?'+':'')+ibov.chg.toFixed(2)+'%':'-'} · USD ${usd?'R$'+usd.price.toFixed(2):'-'} · BTC ${btc?(btc.chg>=0?'+':'')+btc.chg.toFixed(2)+'%':'-'}`;
+
+  // Busca notícias do Brapi
+  let news = [];
+  try{
+    const r = await fetch('https://brapi.dev/api/v2/quote/PETR4?modules=news');
+    if(r.ok){
+      const d = await r.json();
+      news = (d.news || d.results?.[0]?.news || []).filter(n=>n.title).slice(0,30);
+    }
+  }catch(e){}
+
+  const DICAS = [
+    '💡 Regra dos 2%: nunca arrisque mais que 2% do capital em uma operação',
+    '📈 Disciplina > Estratégia. Mantenha o stop loss sempre',
+    '🎯 Diversifique: nunca coloque tudo num único ativo',
+    '📊 Win rate 60% com R/R 1:2 já te torna lucrativo no longo prazo',
+    '💰 Reserva de emergência primeiro, investimento depois',
+    '⏰ Domingo é o melhor dia pra revisar a semana e planejar a próxima',
+    '🚫 Não opere com dinheiro de emergência ou do aluguel',
+    '🧠 Mercado pune emocional, paga disciplina',
+    '📚 Estude antes de investir. Curiosidade é grátis, prejuízo não',
+    '🎓 Cruz dourada (MM50 > MM200) é sinal histórico de bull market',
+    '💀 Cruz da morte (MM50 < MM200) historicamente precede quedas',
+    '🔥 RSI < 30 = sobrevendido. Pode ser oportunidade, MAS pode continuar caindo',
+    '⚠️ RSI > 70 = sobrecomprado. Cuidado com FOMO',
+    '📉 Drawdown faz parte. O importante é o resultado anual',
+    '🏆 Aposentadoria: 15% da renda investida durante 30 anos = R$ milhões',
+    '🌍 SP500 retorno médio histórico: 10% ao ano. Ibovespa: 13% (em real)',
+    '⚡ DCA (Dollar Cost Averaging) bate timing do mercado em 95% dos casos',
+    '🎯 Defina o stop ANTES de entrar. Nunca depois',
+    '💎 Buffett: "Seja fearful quando outros estiverem greedy, e vice-versa"'
+  ];
+
+  const notifs = [];
+  let nid = 10000;
+  const now = Date.now();
+  let newsIdx = 0;
+
+  // Próximas 48h, varrendo de hora em hora
+  for(let h=1; h<=48; h++){
+    const when = new Date(now + h * 3600_000);
+    const wh = when.getHours();
+    const wd = when.getDay();
+    const isWkday = wd>=1 && wd<=5;
+    const isOpen = isWkday && wh>=10 && wh<=18;
+
+    // Snapshot do mercado de hora em hora durante pregão
+    if(isOpen){
+      notifs.push({
+        id: nid++,
+        title: `📊 Mercado · ${wh}h`,
+        body: mSnap + (wh===18?' · Pregão encerrando':''),
+        channelId:'financas-default',
+        schedule:{ at: when }
+      });
+    }
+
+    // Notícia a cada 3h durante o dia (8h-22h)
+    if(wh>=8 && wh<=22 && h%3===0 && news.length){
+      const n = news[newsIdx % news.length]; newsIdx++;
+      const title = n.title.length>80 ? n.title.slice(0,77)+'...' : n.title;
+      notifs.push({
+        id: nid++,
+        title: '🗞️ ' + title,
+        body: (n.source || n.publisher || 'Notícia financeira') + (n.publishedAt?' · '+new Date(n.publishedAt).toLocaleDateString('pt-BR'):''),
+        channelId:'financas-default',
+        schedule:{ at: when }
+      });
+    }
+
+    // Dica educacional a cada 5h
+    if(wh>=9 && wh<=22 && h%5===0){
+      const dica = DICAS[Math.floor(Math.random()*DICAS.length)];
+      notifs.push({
+        id: nid++,
+        title: '💡 Dica do dia',
+        body: dica,
+        channelId:'financas-default',
+        schedule:{ at: when }
+      });
+    }
+
+    // Lembrete de análise técnica antes do pregão (9h30 dias úteis)
+    if(isWkday && wh===9 && when.getMinutes()===0){
+      notifs.push({
+        id: nid++,
+        title: '📡 Análise técnica disponível',
+        body: 'Abra o app → Agente → Sinais pra ver setups detectados',
+        channelId:'financas-default',
+        schedule:{ at: new Date(when.getTime() + 30*60_000) }
+      });
+    }
+
+    // Resumo de fechamento (18h05 dias úteis)
+    if(isWkday && wh===18){
+      notifs.push({
+        id: nid++,
+        title: '🏁 Pregão encerrado',
+        body: 'Resumo do dia: '+mSnap+'. Abra o app pra ver setups.',
+        channelId:'financas-default',
+        schedule:{ at: new Date(when.getTime() + 5*60_000) }
+      });
+    }
+  }
+
+  // Tenta agendar tudo (Android tem limite de 500 notifs agendadas)
+  try{
+    // batches de 50 pra evitar limites
+    for(let i=0; i<notifs.length; i+=50){
+      await LocalNotifications.schedule({notifications: notifs.slice(i, i+50)});
+    }
+    console.log('📅 Agendadas '+notifs.length+' notificações pras próximas 48h');
+  }catch(e){
+    console.error('Falha agendar:', e);
+  }
+  return notifs.length;
+}
+
 // ─── Bank notification capture ───
 async function refreshBankNotifs(){
   if(!BancoNotif) return;
@@ -1684,6 +1830,44 @@ function render(){
 
   // ═══ PAINEL ═══
   if(S.tab===0){
+    // ─── Card de notificações TEMPO REAL ───
+    const notifOn = S.notifPerm==='granted';
+    ct.append(h('div',{className:'card',style:{border:'1px solid '+(notifOn?'rgba(16,185,129,.4)':'var(--border-gold)'),background:notifOn?'linear-gradient(135deg,rgba(16,185,129,.08),rgba(0,0,0,.4))':'linear-gradient(135deg,rgba(212,175,55,.06),rgba(0,0,0,.4))'}},
+      h('div',{style:{display:'flex',gap:'10px',alignItems:'center'}},
+        h('span',{className:'pulse',style:{background:notifOn?'var(--green)':'var(--gold)'}}),
+        h('div',{style:{flex:'1'}},
+          h('div',{style:{fontSize:'13px',fontWeight:'800'}}, notifOn?'🔔 Notificações em tempo real ATIVAS':'🔕 Notificações em tempo real DESATIVADAS'),
+          h('div',{style:{fontSize:'10px',color:'var(--text3)',marginTop:'2px'}},
+            notifOn?'Você recebe ~50 notifs/dia: mercado, notícias, dicas, setups. Toque pra reagendar agora.':'Toque pra ativar e receber atualizações do mercado a cada 1-2h'
+          )
+        ),
+        h('button',{className:'btn '+(notifOn?'btn-g':'btn-o'),style:{padding:'10px 14px',fontSize:'11px'},on:{click:async()=>{
+          if(!isNative || !LocalNotifications){
+            showToast('Só funciona no APK (não no navegador)');
+            return;
+          }
+          try{
+            const perm = await LocalNotifications.checkPermissions();
+            if(perm.display !== 'granted'){
+              const req = await LocalNotifications.requestPermissions();
+              S.notifPerm = req.display==='granted'?'granted':'denied';
+              if(S.notifPerm!=='granted'){
+                showToast('❌ Permissão negada');
+                return;
+              }
+            }
+            S.notifPerm='granted';
+            showToast('🔄 Agendando 48h de notificações...');
+            const count = await scheduleAggressiveNotifications();
+            showToast(`✅ ${count} notificações agendadas pras próximas 48h!`);
+            render();
+          }catch(e){
+            showToast('Erro: '+e.message);
+            console.error(e);
+          }
+        }}}, notifOn?'🔄 REAGENDAR':'🔔 ATIVAR')
+      )
+    ));
     if(saldo<0){
       ct.append(h('div',{className:'banner warn'},'⚠️ Atenção: suas despesas superam as entradas em ',h('strong',null,fmt(Math.abs(saldo))),'.'));
     }
@@ -2888,6 +3072,16 @@ function render(){
 await initNotif();
 render();
 await scheduleSmartReminders();
+
+// Aguardar mercado carregar antes de agendar (snapshot melhor)
+(async()=>{
+  try{
+    await fetchMarket(true);
+    // Agenda 30-60 notificações pras próximas 48h
+    const n = await scheduleAggressiveNotifications();
+    if(n) console.log('✅ '+n+' notificações agendadas pras próximas 48h');
+  }catch(e){console.warn('init notif failed',e)}
+})();
 
 if(isNative && BancoNotif){
   await refreshBankNotifs();
