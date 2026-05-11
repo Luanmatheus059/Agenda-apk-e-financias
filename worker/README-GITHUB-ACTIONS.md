@@ -101,3 +101,4 @@ Análise técnica baseada em **regras matemáticas clássicas** (RSI, médias m�
 - Stop loss
 - Diversificação
 # trigger 1778530325
+# manual trigger 1778530533
