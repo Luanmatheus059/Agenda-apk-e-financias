@@ -269,6 +269,7 @@ let S={
   newsLoading: false,
   newsLastTs: LS.get('newsLastTs',0),
   newsSentiment: {bull:0, bear:0, neutral:0, score:0},
+  newsCategory: LS.get('newsCategory','geral'),
   charts:{},
   // ─── AGENTE ───
   watchlist: LS.get('watchlist',['PETR4','VALE3','BBAS3','BTC','USD-BRL']),
@@ -283,7 +284,7 @@ let S={
 };
 
 function save(){
-  ['ent','sai','aquisicao','aquisHist','invPct','inv','metas','sheetsURL','trello','market','perfilInv','watchlist','alerts','diary','deepseekKey','aiAnalysis','news','newsLastTs'].forEach(k=>LS.set(k,S[k]));
+  ['ent','sai','aquisicao','aquisHist','invPct','inv','metas','sheetsURL','trello','market','perfilInv','watchlist','alerts','diary','deepseekKey','aiAnalysis','news','newsLastTs','newsCategory'].forEach(k=>LS.set(k,S[k]));
   scheduleSmartReminders();
 }
 
@@ -1070,54 +1071,112 @@ function analyzeSentiment(text){
   return {label:'NEUTRO', emoji:'⚪', color:'#9ca3af', score:0};
 }
 
+// Fontes PT-BR organizadas por categoria
+const NEWS_SOURCES = {
+  geral: [
+    {name:'InfoMoney', url:'https://www.infomoney.com.br/feed/'},
+    {name:'MoneyTimes', url:'https://www.moneytimes.com.br/feed/'},
+    {name:'Valor Investe', url:'https://valor.globo.com/valor-investe/rss/'},
+    {name:'Investing.com BR', url:'https://br.investing.com/rss/news.rss'}
+  ],
+  acoes: [
+    {name:'InfoMoney Ações', url:'https://www.infomoney.com.br/mercados/acoes-e-indices/feed/'},
+    {name:'MoneyTimes Empresas', url:'https://www.moneytimes.com.br/category/empresas/feed/'},
+    {name:'Investing.com BR Ações', url:'https://br.investing.com/rss/news_25.rss'}
+  ],
+  fii: [
+    {name:'InfoMoney FIIs', url:'https://www.infomoney.com.br/onde-investir/fundos-imobiliarios/feed/'},
+    {name:'MoneyTimes FIIs', url:'https://www.moneytimes.com.br/category/fundos-imobiliarios/feed/'}
+  ],
+  cripto: [
+    {name:'InfoMoney Cripto', url:'https://www.infomoney.com.br/mercados/criptomoedas/feed/'},
+    {name:'MoneyTimes Cripto', url:'https://www.moneytimes.com.br/category/cripto/feed/'},
+    {name:'Investing.com BR Cripto', url:'https://br.investing.com/rss/news_301.rss'}
+  ],
+  commodities: [
+    {name:'InfoMoney Commodities', url:'https://www.infomoney.com.br/mercados/commodities/feed/'},
+    {name:'Investing.com BR Commodities', url:'https://br.investing.com/rss/news_11.rss'}
+  ],
+  forex: [
+    {name:'Investing.com BR Forex', url:'https://br.investing.com/rss/news_1.rss'},
+    {name:'InfoMoney Câmbio', url:'https://www.infomoney.com.br/mercados/cambio/feed/'}
+  ],
+  economia: [
+    {name:'InfoMoney Economia', url:'https://www.infomoney.com.br/economia/feed/'},
+    {name:'Valor Economia', url:'https://valor.globo.com/brasil/rss/'},
+    {name:'MoneyTimes Economia', url:'https://www.moneytimes.com.br/category/economia/feed/'}
+  ]
+};
+
+// Proxies grátis pra contornar CORS (tentamos em ordem)
+const RSS_PROXIES = [
+  url => `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(url)}`,
+  url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+];
+
+function extractImageFromHTML(html){
+  if(!html) return null;
+  const m = html.match(/<img[^>]+src=["']([^"']+)["']/i);
+  return m ? m[1] : null;
+}
+
+async function fetchRSS(url, sourceName){
+  // Tenta rss2json (já parseia JSON) primeiro
+  try{
+    const r = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(url)}`);
+    if(r.ok){
+      const d = await r.json();
+      const items = (d.items||[]).map(item => ({
+        title: item.title || '',
+        link: item.link || '',
+        source: sourceName,
+        date: item.pubDate ? new Date(item.pubDate).getTime() : Date.now(),
+        image: item.thumbnail || item.enclosure?.link || extractImageFromHTML(item.description) || extractImageFromHTML(item.content) || null,
+        sentiment: analyzeSentiment(item.title + ' ' + (item.description||''))
+      }));
+      return items;
+    }
+  }catch(e){console.warn('rss2json',sourceName,e.message)}
+  // Fallback: allorigins + parser DOM
+  try{
+    const r = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`);
+    if(r.ok){
+      const xml = await r.text();
+      const doc = new DOMParser().parseFromString(xml,'text/xml');
+      const items = [...doc.querySelectorAll('item')].slice(0,20).map(item => {
+        const get = tag => (item.querySelector(tag)?.textContent || '').trim();
+        const desc = get('description');
+        const enc = item.querySelector('enclosure');
+        const mediaThumb = item.getElementsByTagNameNS('http://search.yahoo.com/mrss/','thumbnail')[0];
+        const mediaContent = item.getElementsByTagNameNS('http://search.yahoo.com/mrss/','content')[0];
+        return {
+          title: get('title'),
+          link: get('link'),
+          source: sourceName,
+          date: new Date(get('pubDate') || Date.now()).getTime(),
+          image: mediaThumb?.getAttribute('url') || mediaContent?.getAttribute('url') || enc?.getAttribute('url') || extractImageFromHTML(desc),
+          sentiment: analyzeSentiment(get('title') + ' ' + desc)
+        };
+      });
+      return items;
+    }
+  }catch(e){console.warn('allorigins',sourceName,e.message)}
+  return [];
+}
+
 async function fetchAllNews(){
   // Cache 60s pra não martelar
   if(Date.now() - S.newsLastTs < 60_000 && S.news.length) return;
   S.newsLoading = true; render();
+  const cat = S.newsCategory || 'geral';
+  const sources = NEWS_SOURCES[cat] || NEWS_SOURCES.geral;
   const all = [];
-  // 1. Yahoo Finance News (sem auth)
-  try{
-    const queries = ['stock market','ibovespa','petr4','vale3','bitcoin','dolar'];
-    for(const q of queries.slice(0,3)){
-      try{
-        const r = await fetch(`https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&newsCount=10`);
-        if(r.ok){
-          const d = await r.json();
-          for(const n of (d.news||[])){
-            if(!n.title) continue;
-            const sent = analyzeSentiment(n.title);
-            all.push({
-              title: n.title,
-              link: n.link,
-              source: n.publisher || 'Yahoo',
-              date: n.providerPublishTime ? n.providerPublishTime*1000 : Date.now(),
-              image: (n.thumbnail?.resolutions?.[0]?.url) || null,
-              sentiment: sent
-            });
-          }
-        }
-      }catch(e){console.warn('yahoo news',q,e.message)}
-    }
-  }catch(e){console.warn('yahoo news fail',e)}
 
-  // 2. Investing.com RSS (via rss2json proxy gratuito)
-  try{
-    const r = await fetch('https://api.rss2json.com/v1/api.json?rss_url='+encodeURIComponent('https://br.investing.com/rss/news.rss'));
-    if(r.ok){
-      const d = await r.json();
-      for(const item of (d.items||[]).slice(0,15)){
-        const sent = analyzeSentiment(item.title);
-        all.push({
-          title: item.title,
-          link: item.link,
-          source: 'Investing.com',
-          date: item.pubDate ? new Date(item.pubDate).getTime() : Date.now(),
-          image: item.thumbnail || item.enclosure?.link || null,
-          sentiment: sent
-        });
-      }
-    }
-  }catch(e){console.warn('rss2json investing fail',e)}
+  // Busca em paralelo todas as fontes da categoria
+  const results = await Promise.allSettled(sources.map(s => fetchRSS(s.url, s.name)));
+  for(const r of results){
+    if(r.status === 'fulfilled') all.push(...r.value);
+  }
 
   // Dedup por título + ordena por data desc
   const seen = new Set();
@@ -1152,12 +1211,32 @@ function renderNewsTab(ct){
   ct.append(h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'12px',padding:'14px',background:'linear-gradient(135deg,rgba(212,175,55,.1),rgba(0,0,0,.4))',borderRadius:'14px',border:'1px solid var(--border-gold)'}},
     h('div',null,
       h('div',{style:{fontSize:'17px',fontWeight:'800',display:'flex',alignItems:'center',gap:'8px'}},
-        h('span',{className:'pulse'}),'📰 Notícias do Mercado',h('span',{className:'live-badge'},'AO VIVO')
+        h('span',{className:'pulse'}),'📰 Notícias PT-BR',h('span',{className:'live-badge'},'AO VIVO')
       ),
       h('div',{id:'live-clock',style:{fontSize:'11px',color:'var(--text2)',marginTop:'4px',fontWeight:'600'}},new Date().toLocaleTimeString('pt-BR'))
     ),
     h('button',{className:'refresh-btn',on:{click:()=>{S.newsLastTs=0;fetchAllNews()}}},S.newsLoading?'⏳':'🔄')
   ));
+
+  // Filtro de categorias
+  const cats = [
+    {k:'geral',l:'📊 Geral'},
+    {k:'acoes',l:'📈 Ações'},
+    {k:'fii',l:'🏢 FIIs'},
+    {k:'cripto',l:'₿ Cripto'},
+    {k:'commodities',l:'🛢️ Commodities'},
+    {k:'forex',l:'💱 Forex'},
+    {k:'economia',l:'🌎 Economia'}
+  ];
+  const catBar = h('div',{style:{display:'flex',gap:'6px',overflowX:'auto',marginBottom:'12px',padding:'4px 0',scrollbarWidth:'thin'}});
+  for(const c of cats){
+    catBar.append(h('button',{
+      className:'tab'+(S.newsCategory===c.k?' on':''),
+      style:{flexShrink:'0',padding:'6px 12px',fontSize:'12px',whiteSpace:'nowrap'},
+      on:{click:()=>{S.newsCategory=c.k;S.newsLastTs=0;save();fetchAllNews()}}
+    },c.l));
+  }
+  ct.append(catBar);
 
   // Sentimento agregado (BULL/BEAR/NEUTRO)
   const s = S.newsSentiment;
@@ -1210,9 +1289,10 @@ function renderNewsTab(ct){
   }
 }
 
-// ─── AGENDAMENTO AGRESSIVO DE NOTIFICAÇÕES (48h, variadas) ───
-// Cria 30-60 notificações com conteúdo diverso pras próximas 48h.
-// Chamado SEMPRE que app abre — re-agenda com snapshot atual do mercado.
+// ─── AGENDAMENTO 24/7 CONTÍNUO (7 DIAS, ~250 notifs) ───
+// Cria notificações pras próximas 168h (7 dias).
+// Chamado SEMPRE que app abre — re-agenda com snapshot atual + notícias frescas.
+// Inclui notificação âncora a cada 5 dias pra lembrar de reabrir e reagendar.
 async function scheduleAggressiveNotifications(){
   if(!isNative || !LocalNotifications || S.notifPerm!=='granted') return;
 
@@ -1276,8 +1356,8 @@ async function scheduleAggressiveNotifications(){
   const now = Date.now();
   let newsIdx = 0;
 
-  // Próximas 48h, varrendo de hora em hora
-  for(let h=1; h<=48; h++){
+  // Próximas 168h (7 DIAS), varrendo de hora em hora
+  for(let h=1; h<=168; h++){
     const when = new Date(now + h * 3600_000);
     const wh = when.getHours();
     const wd = when.getDay();
@@ -1341,15 +1421,37 @@ async function scheduleAggressiveNotifications(){
         schedule:{ at: new Date(when.getTime() + 5*60_000) }
       });
     }
+
+    // Notícias internacionais e cripto também aos finais de semana (mercado 24/7)
+    if(!isWkday && (wh===10 || wh===14 || wh===18)){
+      notifs.push({
+        id: nid++,
+        title: '₿ Cripto + Internacionais',
+        body: 'Bitcoin e mercados globais operam 24/7. Acompanhe no app aba Notícias.',
+        channelId:'financas-default',
+        schedule:{ at: when }
+      });
+    }
+  }
+
+  // Notificação âncora de reagendamento (a cada 5 dias) — pede pra reabrir o app
+  for(let d=5; d<=14; d+=5){
+    const when = new Date(now + d*24*3600_000);
+    notifs.push({
+      id: nid++,
+      title: '🔄 Atualize seu agente',
+      body: 'Reabra o app pra reagendar mais 7 dias de notificações financeiras.',
+      channelId:'financas-default',
+      schedule:{ at: when }
+    });
   }
 
   // Tenta agendar tudo (Android tem limite de 500 notifs agendadas)
   try{
-    // batches de 50 pra evitar limites
     for(let i=0; i<notifs.length; i+=50){
       await LocalNotifications.schedule({notifications: notifs.slice(i, i+50)});
     }
-    console.log('📅 Agendadas '+notifs.length+' notificações pras próximas 48h');
+    console.log('📅 Agendadas '+notifs.length+' notificações pros próximos 7 DIAS');
   }catch(e){
     console.error('Falha agendar:', e);
   }
@@ -1467,6 +1569,11 @@ function parseCSVSection(lines){
   const sample = lines[0];
   const sep = sample.includes(';') ? ';' : sample.includes('\t') ? '\t' : ',';
 
+  // Ignora seções de RESUMO de extrato (Nubank/Inter/C6 começam com INITIAL_BALANCE;CREDITS;DEBITS;FINAL_BALANCE)
+  if(/initial_balance|final_balance|saldo_inicial|saldo_final|opening_balance|closing_balance/i.test(sample)){
+    return [];
+  }
+
   const firstCols = lines[0].split(sep).map(c => c.trim().replace(/^"|"$/g,''));
   // Detecta header (português + inglês: data, descrição, valor, débito, crédito,
   // release_date, transaction_type, transaction_net_amount, amount, name, memo, etc)
@@ -1509,9 +1616,15 @@ function parseCSVSection(lines){
         if(d>0){ valor = d; tipo='saida'; }
         else if(c>0){ valor = c; tipo='entrada'; }
       } else if(idxValor>=0){
-        valor = parseBRMoney(cols[idxValor]);
+        const raw = parseBRMoney(cols[idxValor]);
+        // Sinal embutido (Nubank/Inter/PicPay): valor positivo=entrada, negativo=saída
+        if(raw < 0){ tipo = 'saida'; }
+        else if(raw > 0){ tipo = 'entrada'; }
+        valor = Math.abs(raw);
       } else {
-        valor = parseBRMoney(cols[cols.length-1]);
+        const raw = parseBRMoney(cols[cols.length-1]);
+        if(raw < 0){ tipo = 'saida'; valor = Math.abs(raw); }
+        else valor = raw;
       }
       if(idxTipo>=0 && !tipo){
         const t = (cols[idxTipo]||'').toLowerCase().trim();
@@ -1756,11 +1869,32 @@ function inferTypeFromDesc(desc){
 
 // Inferência baseada em colunas auxiliares (Tipo, D/C, Débito/Crédito)
 function inferTypeFromRow(cells){
+  // 1. Tipo explícito (D/C, +/-)
   for(const v of cells){
     const s = String(v||'').trim().toLowerCase();
     if(s==='d' || s==='débito' || s==='debito' || s==='dr' || s==='-') return 'saida';
     if(s==='c' || s==='crédito' || s==='credito' || s==='cr' || s==='+') return 'entrada';
   }
+  // 2. Inferir pela DESCRIÇÃO (Nubank/Inter/C6/PicPay)
+  const joined = cells.join(' ').toLowerCase();
+  // ENTRADAS (recebido, depósito, rendimento, salário, devolução)
+  if(/\b(pix\s+recebid|transferência\s+recebid|transferencia\s+recebid|dep[oó]sito|cr[eé]dito\s+em|rendimento|salário|salario|recebimento|devolu[çc][aã]o|estorno|cashback|reembolso)\b/i.test(joined)) return 'entrada';
+  // SAÍDAS (enviado, pago, compra, fatura, débito, saque)
+  if(/\b(pix\s+enviad|transferência\s+enviad|transferencia\s+enviad|pagamento\s+(de\s+)?(cart[aã]o|fatura|conta|qr\s+pix)?|pagamento\s+(em|com)\s+|compra|fatura|saque|d[eé]bito|tarifa|taxa|cobran[çc]a|boleto\s+pago|cart[aã]o\s+de\s+cr[eé]dito)\b/i.test(joined)) return 'saida';
+  return null;
+}
+
+// Detecta CATEGORIA pela descrição (pro split aquisição/investimento/casa)
+function inferCategoryFromDesc(desc){
+  const d = (desc||'').toLowerCase();
+  if(/rendimento|cdb|tesouro|cripto|bitcoin|btc|ações|acoes|fii|investimento|corretora|xp\s|btg|nuinvest|clear|rico/.test(d)) return 'Investimentos';
+  if(/spotify|netflix|amazon|hbo|disney|youtube\s*premium|streaming/.test(d)) return 'Assinaturas';
+  if(/uber|99\s*pop|99\s*app|cabify|metro|metrô|ônibus|onibus|combust[ií]vel|gasolina|posto|estacionamento/.test(d)) return 'Transporte';
+  if(/ifood|rappi|restaurante|lanchonete|padaria|merc(ado|earia)|supermerc|empório|emporio|açougue|hortifruti|alimentação|alimentacao/.test(d)) return 'Alimentação';
+  if(/farm[aá]cia|drogaria|hospital|cl[ií]nica|m[eé]dico|consulta|exame|raio.?x/.test(d)) return 'Saúde';
+  if(/aluguel|condom[ií]nio|energia|luz|[aá]gua|saneamento|g[aá]s\b|cemig|copel|enel|telefonica|vivo\b|tim\b|claro\b|oi\b|internet|wifi/.test(d)) return 'Moradia';
+  if(/escola|faculdade|universidade|curso|mensalidade|alura|udemy|coursera/.test(d)) return 'Educação';
+  if(/cart[aã]o\s+de\s+cr[eé]dito|fatura/.test(d)) return 'Cartão';
   return null;
 }
 
@@ -1866,13 +2000,25 @@ function sel(v,opts,fn,ph='—'){const s=h('select',{on:{change:e=>fn(e.target.v
 function buildSuggestions(){
   const tE=tot(S.ent), tS=tot(S.sai), saldo=tE-tS;
   const out=[];
-  // saldo positivo → sugere investimento
+  // saldo positivo → sugere investimento por PERFIL DE RISCO
   if(saldo > 0){
     const inv = Math.round(saldo * (S.invPct||10) / 100);
+    // Alocação por perfil
+    let aloc, alocBody;
+    if(S.perfilInv==='conservador'){
+      aloc = {RF:80, FII:10, Acoes:7, Cripto:3};
+      alocBody = 'Renda Fixa 80%, FIIs 10%, Ações 7%, Cripto 3% (perfil CONSERVADOR)';
+    } else if(S.perfilInv==='agressivo'){
+      aloc = {RF:20, FII:20, Acoes:40, Cripto:20};
+      alocBody = 'Renda Fixa 20%, FIIs 20%, Ações 40%, Cripto 20% (perfil AGRESSIVO)';
+    } else {
+      aloc = {RF:50, FII:20, Acoes:25, Cripto:5};
+      alocBody = 'Renda Fixa 50%, FIIs 20%, Ações 25%, Cripto 5% (perfil MODERADO)';
+    }
     out.push({
       icon:'📈', color:'#a855f7',
-      title:'Invista parte do seu saldo',
-      body:`Você tem ${fmt(saldo)} de saldo positivo. Sugerimos investir ${fmt(inv)} (${S.invPct}% do saldo).`
+      title:`Investir ${fmt(inv)} (${S.invPct}% do saldo)`,
+      body:`Saldo positivo de ${fmt(saldo)}. Por perfil ${(S.perfilInv||'moderado').toUpperCase()}: ${alocBody}. RF: ${fmt(inv*aloc.RF/100)} · FII: ${fmt(inv*aloc.FII/100)} · Ações: ${fmt(inv*aloc.Acoes/100)} · Cripto: ${fmt(inv*aloc.Cripto/100)}.`
     });
   }
   // reserva de emergência
@@ -2014,9 +2160,9 @@ function render(){
               }
             }
             S.notifPerm='granted';
-            showToast('🔄 Agendando 48h de notificações...');
+            showToast('🔄 Agendando 7 DIAS de notificações 24/7...');
             const count = await scheduleAggressiveNotifications();
-            showToast(`✅ ${count} notificações agendadas pras próximas 48h!`);
+            showToast(`✅ ${count} notificações 24/7 agendadas pros próximos 7 dias!`);
             render();
           }catch(e){
             showToast('Erro: '+e.message);
@@ -3237,9 +3383,9 @@ await scheduleSmartReminders();
 (async()=>{
   try{
     await fetchMarket(true);
-    // Agenda 30-60 notificações pras próximas 48h
+    // Agenda 30-60 notificações pras próximos 7 dias
     const n = await scheduleAggressiveNotifications();
-    if(n) console.log('✅ '+n+' notificações agendadas pras próximas 48h');
+    if(n) console.log('✅ '+n+' notificações 24/7 agendadas pros próximos 7 dias');
   }catch(e){console.warn('init notif failed',e)}
 })();
 
