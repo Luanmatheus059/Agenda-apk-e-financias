@@ -64,11 +64,25 @@ button{font-family:inherit;cursor:pointer;border:none;outline:none;transition:al
 .banner.warn{background:rgba(245,158,11,.1);border-color:rgba(245,158,11,.4);color:#fbbf24}
 .banner.ok{background:rgba(34,197,94,.1);border-color:rgba(34,197,94,.4);color:#86efac}
 .pill{display:inline-block;padding:2px 8px;border-radius:8px;font-size:10px;font-weight:700;background:var(--bg);color:var(--text2)}
+.tip{display:flex;gap:10px;padding:10px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid var(--border);margin-bottom:8px}
+.tip-ic{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px}
+.tip-body{flex:1;font-size:12px;line-height:1.45}
+.tip-body b{display:block;font-size:13px;margin-bottom:2px}
+.file-drop{border:2px dashed var(--border);border-radius:12px;padding:18px;text-align:center;background:var(--bg);margin-bottom:10px;cursor:pointer}
+.file-drop:active{background:var(--card2)}
+.tpl-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-bottom:10px}
+.tpl-btn{padding:10px 8px;border-radius:10px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:11px;font-weight:600;text-align:center;line-height:1.3}
+.tpl-btn:active{background:var(--card2);border-color:var(--accent)}
+.prev-row{display:flex;gap:8px;padding:8px;background:var(--bg);border-radius:8px;margin-bottom:6px;font-size:11px;align-items:center}
+.prev-tag{font-size:9px;padding:2px 6px;border-radius:5px;font-weight:700}
+.prev-tag.in{background:rgba(34,197,94,.2);color:#86efac}
+.prev-tag.out{background:rgba(239,68,68,.2);color:#fca5a5}
 </style>
 </head>
 <body>
 <div id="app"></div>
 <div id="toast" class="toast"></div>
+<input type="file" id="fileInput" accept=".csv,.ofx,.txt,.qif,text/csv,text/plain" style="display:none">
 <script type="module">
 // ─── Capacitor bridge ───
 const Cap = window.Capacitor;
@@ -89,6 +103,48 @@ const MST=["Atingida","Em Andamento","Não Atingida"];
 const INVT=["Renda Fixa","Ações","FIIs","Tesouro Direto","CDB","Cripto","Poupança","Outros"];
 const MES=["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 
+// ─── Auto-categoria por palavras-chave (PT-BR) ───
+const CAT_KEYWORDS = {
+  "Alimentação":["mercado","supermercado","restaurante","ifood","rappi","padaria","açougue","hortifruti","lanchonete","food","mc donalds","mcdonald","burger","pizza","subway","cafe","café","cervejaria","bar ","feira","ifd","fome"],
+  "Transporte":["uber","99","99pop","cabify","taxi","gasolina","posto","combustivel","combustível","metro","metrô","ônibus","onibus","bilhete","pedágio","pedagio","estacionamento","estaciona","oficina","mecânico","mecanico","ipva","carro","seguro auto"],
+  "Moradia":["aluguel","condominio","condomínio","luz","cemig","copel","celesc","enel","light","cpfl","energia","água","agua","sabesp","cedae","sanepar","gas","internet","vivo","claro","tim","oi","iptu"],
+  "Saúde":["farmacia","farmácia","drogaria","drogasil","raia","pacheco","hospital","clinica","clínica","médico","medico","consulta","exame","unimed","amil","sulamerica","sulamérica","bradesco saúde","laboratorio","laboratório"],
+  "Educação":["escola","faculdade","colegio","colégio","universidade","curso","mensalidade","udemy","coursera","alura","livro","papelaria","material escolar"],
+  "Lazer":["cinema","netflix","spotify","disney","amazon prime","hbo","youtube","ingresso","show","viagem","hotel","airbnb","booking","decolar","parque","balada","steam","playstation","xbox"],
+  "Vestuário":["roupa","sapato","tenis","tênis","calcado","calçado","zara","renner","cea","c&a","riachuelo","americanas roupas","shopping","loja "],
+  "Contas Fixas":["fatura","boleto","conta de","tarifa","mensalidade","seguro"],
+  "Assinaturas":["assinatura","subscription","plano mensal","premium","spotify","netflix","disney","prime"]
+};
+const CAT_E_KEYWORDS = {
+  "Salário":["salario","salário","folha","holerite","pagamento empresa"],
+  "Freelance":["freela","freelance","autonomo","autônomo","prestação serviço"],
+  "Vendas Plataforma":["mercado livre","shopee","amazon vendedor","hotmart","eduzz","kiwify","monetizze","kirvano"],
+  "Investimentos":["rendimento","dividendo","juros","cdb","tesouro","fii","cripto"],
+  "Comissão":["comissão","comissao","bonus","bônus"]
+};
+function autoCat(desc, tipo){
+  const t = (desc||"").toLowerCase();
+  const map = tipo==='entrada' ? CAT_E_KEYWORDS : CAT_KEYWORDS;
+  for(const cat in map){
+    for(const kw of map[cat]){
+      if(t.includes(kw)) return cat;
+    }
+  }
+  return "";
+}
+
+// ─── Templates de meta (pré-prontos) ───
+const META_TEMPLATES = [
+  {emoji:"🏦", meta:"Reserva de emergência", tipo:"Economia", valorMeta:6, desc:"6× suas despesas mensais", calc:"emergencia"},
+  {emoji:"🏠", meta:"Entrada da casa", tipo:"Economia", valorMeta:30000, desc:"Sugestão: R$ 30.000"},
+  {emoji:"✈️", meta:"Viagem dos sonhos", tipo:"Pessoal", valorMeta:5000, desc:"Sugestão: R$ 5.000"},
+  {emoji:"🚗", meta:"Carro novo (entrada)", tipo:"Economia", valorMeta:15000, desc:"Sugestão: R$ 15.000"},
+  {emoji:"👵", meta:"Aposentadoria (1º ano)", tipo:"Investimento", valorMeta:12000, desc:"R$ 1.000/mês"},
+  {emoji:"💍", meta:"Casamento", tipo:"Pessoal", valorMeta:20000, desc:"Sugestão: R$ 20.000"},
+  {emoji:"🎓", meta:"Curso/Educação", tipo:"Pessoal", valorMeta:3000, desc:"Sugestão: R$ 3.000"},
+  {emoji:"💼", meta:"Capital pra negócio", tipo:"Investimento", valorMeta:10000, desc:"Sugestão: R$ 10.000"}
+];
+
 const LS={get(k,d){try{const v=localStorage.getItem('fn4-'+k);return v?JSON.parse(v):d}catch{return d}},set(k,v){try{localStorage.setItem('fn4-'+k,JSON.stringify(v))}catch{}}};
 const fmt=v=>(parseFloat(v)||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const pct=(a,b)=>b?Math.min(100,Math.round(a/b*100)):0;
@@ -105,6 +161,8 @@ let S={
   newS:{desc:'',data:'',cat:'',valor:'',forma:'',status:'Não Pago',obs:''},
   newM:{meta:'',tipo:'',prazo:'',valorMeta:'',valorReal:'',status:'Em Andamento'},
   importTxt:'',
+  importPreview:null,    // {entradas:[], saidas:[]}
+  importFileName:'',
   bankNotifs:[],
   bankPerm:false,
   notifPerm:'default'
@@ -132,7 +190,7 @@ async function initNotif(){
   }
 }
 
-const NID={daily:3000, weekly:3100, lowBalance:3200};
+const NID={daily:3000, weekly:3100, lowBalance:3200, monthly:3300, savings:3400};
 
 async function scheduleSmartReminders(){
   if(!isNative || !LocalNotifications || S.notifPerm!=='granted') return;
@@ -143,7 +201,6 @@ async function scheduleSmartReminders(){
     }
   }catch(e){}
 
-  // Última movimentação?
   const all=[...S.ent,...S.sai].sort((a,b)=>(b.id||0)-(a.id||0));
   const last=all[0];
   let lastTs=0;
@@ -152,7 +209,6 @@ async function scheduleSmartReminders(){
 
   const notifs=[];
 
-  // Lembrete diário às 20h: cobra lançamentos
   notifs.push({
     id:NID.daily,
     title:'💸 Lançou os gastos de hoje?',
@@ -162,7 +218,6 @@ async function scheduleSmartReminders(){
     schedule:{ on:{ hour:20, minute:0 }, allowWhileIdle:true }
   });
 
-  // Domingo 19h: revisão financeira
   notifs.push({
     id:NID.weekly,
     title:'📊 Revisão financeira da semana',
@@ -170,7 +225,24 @@ async function scheduleSmartReminders(){
     schedule:{ on:{ weekday:1, hour:19, minute:0 }, allowWhileIdle:true }
   });
 
-  // Saldo negativo: alerta agora
+  // Lembrete de poupança/aquisição mensal (todo dia 5)
+  if(S.aquisicao.nome && S.aquisicao.valor>0){
+    notifs.push({
+      id:NID.savings,
+      title:'🎯 Guardar pra '+S.aquisicao.nome,
+      body:'Hora de separar o dinheiro do mês pra sua próxima aquisição.',
+      schedule:{ on:{ day:5, hour:10, minute:0 }, allowWhileIdle:true }
+    });
+  }
+
+  // Lembrete de revisão mensal (dia 1)
+  notifs.push({
+    id:NID.monthly,
+    title:'📅 Mês novo, planejamento novo',
+    body:'Defina suas metas e orçamento pro mês que começou.',
+    schedule:{ on:{ day:1, hour:9, minute:0 }, allowWhileIdle:true }
+  });
+
   const saldo=tot(S.ent)-tot(S.sai);
   if(saldo<0){
     notifs.push({
@@ -202,13 +274,15 @@ async function requestBankPerm(){
   showToast('Habilite "Minhas Finanças" na lista');
 }
 function importBankAsEntrada(it){
-  S.ent.push({desc:it.titulo||it.banco,data:it.data,cat:'',valor:String(it.valor),obs:'Banco: '+it.banco,id:++uid});
+  const cat = autoCat(it.titulo||it.texto, 'entrada');
+  S.ent.push({desc:it.titulo||it.banco,data:it.data,cat,valor:String(it.valor),obs:'Banco: '+it.banco,id:++uid});
   BancoNotif && BancoNotif.markResolved({id:it.id});
   save();refreshBankNotifs();
   showToast('Entrada lançada ✅');
 }
 function importBankAsSaida(it){
-  S.sai.push({desc:it.titulo||it.banco,data:it.data,cat:'',valor:String(it.valor),forma:'',status:'Pago',obs:'Banco: '+it.banco,id:++uid});
+  const cat = autoCat(it.titulo||it.texto, 'saida');
+  S.sai.push({desc:it.titulo||it.banco,data:it.data,cat,valor:String(it.valor),forma:'',status:'Pago',obs:'Banco: '+it.banco,id:++uid});
   BancoNotif && BancoNotif.markResolved({id:it.id});
   save();refreshBankNotifs();
   showToast('Saída lançada ✅');
@@ -216,6 +290,137 @@ function importBankAsSaida(it){
 function dismissBank(it){
   BancoNotif && BancoNotif.markResolved({id:it.id});
   refreshBankNotifs();
+}
+
+// ─── Parsers de extrato ───
+function parseBRDate(s){
+  if(!s) return '';
+  // dd/mm/yyyy, dd-mm-yyyy, yyyy-mm-dd, ddmmyyyy
+  const t = s.trim();
+  let m;
+  if((m=t.match(/^(\d{2})\/(\d{2})\/(\d{4})$/))) return `${m[1]}/${m[2]}/${m[3]}`;
+  if((m=t.match(/^(\d{2})-(\d{2})-(\d{4})$/))) return `${m[1]}/${m[2]}/${m[3]}`;
+  if((m=t.match(/^(\d{4})-(\d{2})-(\d{2})/))) return `${m[3]}/${m[2]}/${m[1]}`;
+  if((m=t.match(/^(\d{2})(\d{2})(\d{4})$/))) return `${m[1]}/${m[2]}/${m[3]}`;
+  if((m=t.match(/^(\d{4})(\d{2})(\d{2})/))) return `${m[3]}/${m[2]}/${m[1]}`;
+  return t;
+}
+function parseBRMoney(s){
+  if(!s) return 0;
+  const cleaned = String(s).replace(/[^\d.,\-+]/g,'');
+  // formato BR: 1.234,56 → tira pontos, troca vírgula por ponto
+  if(cleaned.includes(',')){
+    return parseFloat(cleaned.replace(/\./g,'').replace(',','.')) || 0;
+  }
+  return parseFloat(cleaned) || 0;
+}
+
+function parseOFX(text){
+  // OFX é XML-like. Extrai todas as <STMTTRN>...</STMTTRN>
+  const out = [];
+  const txns = text.match(/<STMTTRN>[\s\S]*?<\/STMTTRN>/g) || [];
+  for(const t of txns){
+    const trnType = (t.match(/<TRNTYPE>([^<\n\r]+)/i)||[])[1] || '';
+    const dt = (t.match(/<DTPOSTED>([^<\n\r]+)/i)||[])[1] || '';
+    const amt = (t.match(/<TRNAMT>([^<\n\r]+)/i)||[])[1] || '0';
+    const memo = (t.match(/<MEMO>([^<\n\r]+)/i)||[])[1] || '';
+    const name = (t.match(/<NAME>([^<\n\r]+)/i)||[])[1] || '';
+    const desc = (name+' '+memo).trim() || trnType || 'Transação';
+    const v = parseFloat(amt) || 0;
+    if(v===0) continue;
+    out.push({
+      data: parseBRDate(dt.slice(0,8)),
+      desc: desc.replace(/\s+/g,' ').trim(),
+      valor: v
+    });
+  }
+  return out;
+}
+
+function parseCSV(text){
+  const out = [];
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if(!lines.length) return out;
+  // Detecta separador
+  const sample = lines[0];
+  const sep = sample.includes(';') ? ';' : sample.includes('\t') ? '\t' : ',';
+  // Pula linha de cabeçalho se a 1ª linha não tem número
+  let start = 0;
+  const firstCols = lines[0].split(sep);
+  const hasNumber = firstCols.some(c => /\d/.test(c) && !/^[a-zA-Z]/.test(c.trim()));
+  if(!hasNumber || /data|descri|valor|hist[oó]r/i.test(lines[0])) start = 1;
+
+  for(let i=start; i<lines.length; i++){
+    const cols = lines[i].split(sep).map(c => c.trim().replace(/^"|"$/g,''));
+    if(cols.length < 2) continue;
+    // Heurística: 1ª coluna data, última coluna valor, do meio: descrição
+    let data='', desc='', valor=0;
+    if(cols.length >= 3){
+      data = parseBRDate(cols[0]);
+      valor = parseBRMoney(cols[cols.length-1]);
+      desc = cols.slice(1, cols.length-1).join(' - ').trim();
+    } else {
+      data = parseBRDate(cols[0]);
+      desc = '';
+      valor = parseBRMoney(cols[1]);
+    }
+    if(!desc) desc = 'Transação';
+    if(valor !== 0) out.push({data, desc, valor});
+  }
+  return out;
+}
+
+function parseExtrato(text, filename){
+  const t = (text||'').trim();
+  if(!t) return [];
+  // OFX detection
+  if(/<OFX>|<STMTTRN>/i.test(t) || (filename && /\.ofx$/i.test(filename))){
+    return parseOFX(t);
+  }
+  return parseCSV(t);
+}
+
+function classifyImport(items){
+  const entradas=[], saidas=[];
+  for(const it of items){
+    if(it.valor >= 0){
+      entradas.push({...it, cat: autoCat(it.desc, 'entrada')});
+    } else {
+      saidas.push({...it, valor: Math.abs(it.valor), cat: autoCat(it.desc, 'saida')});
+    }
+  }
+  return {entradas, saidas};
+}
+
+function pickFile(){
+  const fi = document.getElementById('fileInput');
+  fi.value = '';
+  fi.onchange = async (e)=>{
+    const f = e.target.files && e.target.files[0];
+    if(!f) return;
+    S.importFileName = f.name;
+    const text = await f.text();
+    S.importTxt = text;
+    const items = parseExtrato(text, f.name);
+    S.importPreview = classifyImport(items);
+    showToast(`${items.length} transações detectadas`);
+    render();
+  };
+  fi.click();
+}
+
+function commitImport(){
+  if(!S.importPreview) return;
+  let ne=0, ns=0;
+  for(const it of S.importPreview.entradas){
+    S.ent.push({desc:it.desc,data:it.data,cat:it.cat||'',valor:String(it.valor),obs:'Importado',id:++uid}); ne++;
+  }
+  for(const it of S.importPreview.saidas){
+    S.sai.push({desc:it.desc,data:it.data,cat:it.cat||'',valor:String(it.valor),forma:'',status:'Pago',obs:'Importado',id:++uid}); ns++;
+  }
+  S.importPreview=null; S.importTxt=''; S.importFileName=''; S.modal=null;
+  save(); render();
+  showToast(`${ne} entrada(s) e ${ns} saída(s) importadas ✅`);
 }
 
 function h(t,p,...c){
@@ -231,6 +436,80 @@ function h(t,p,...c){
 }
 function inp(v,ph,fn,ex={}){return h('input',{value:v||'',placeholder:ph,...ex,on:{input:e=>fn(e.target.value),change:e=>fn(e.target.value)}})}
 function sel(v,opts,fn,ph='—'){const s=h('select',{on:{change:e=>fn(e.target.value)}});s.append(h('option',{value:''},ph));opts.forEach(o=>{const op=h('option',{value:o},o);if(o===v)op.selected=true;s.append(op)});return s}
+
+// ─── Sugestões inteligentes ───
+function buildSuggestions(){
+  const tE=tot(S.ent), tS=tot(S.sai), saldo=tE-tS;
+  const out=[];
+  // saldo positivo → sugere investimento
+  if(saldo > 0){
+    const inv = Math.round(saldo * (S.invPct||10) / 100);
+    out.push({
+      icon:'📈', color:'#a855f7',
+      title:'Invista parte do seu saldo',
+      body:`Você tem ${fmt(saldo)} de saldo positivo. Sugerimos investir ${fmt(inv)} (${S.invPct}% do saldo).`
+    });
+  }
+  // reserva de emergência
+  const mediaDespesaMensal = tS > 0 ? tS : 0;
+  if(mediaDespesaMensal > 0){
+    const reserva = Math.round(mediaDespesaMensal * 6);
+    out.push({
+      icon:'🏦', color:'#22c55e',
+      title:'Reserva de emergência',
+      body:`Sugestão: ter ${fmt(reserva)} guardado (6× suas despesas atuais de ${fmt(mediaDespesaMensal)}).`
+    });
+  }
+  // aquisição em andamento
+  if(S.aquisicao.nome && S.aquisicao.valor>0){
+    const aqAcum=S.aquisicao.mensal.reduce((s,v)=>s+(parseFloat(v)||0),0);
+    const restante = Math.max(0, S.aquisicao.valor - aqAcum);
+    if(restante>0){
+      const mesesRestantes = 12 - S.aquisicao.mensal.findIndex((v,i,arr)=>arr.slice(i+1).every(x=>!x||x===0)) - 1;
+      const meses = Math.max(1, mesesRestantes);
+      const porMes = Math.round(restante / meses);
+      out.push({
+        icon:'🎯', color:'#f59e0b',
+        title:`Faltam ${fmt(restante)} pra "${S.aquisicao.nome}"`,
+        body:`Em ${meses} mês(es) restantes, guarde cerca de ${fmt(porMes)}/mês pra conseguir.`
+      });
+    }
+  }
+  // metas perto de alcançar
+  for(const m of S.metas){
+    const real = parseFloat(m.valorReal)||0;
+    const meta = parseFloat(m.valorMeta)||0;
+    if(meta>0 && real>0 && real>=meta*0.8 && real<meta){
+      out.push({
+        icon:'🏆', color:'#22c55e',
+        title:`"${m.meta}" está quase lá!`,
+        body:`Faltam ${fmt(meta-real)} (${pct(real,meta)}% concluído).`
+      });
+    }
+  }
+  // gasto em categoria muito alto
+  if(tS>0){
+    const porCat = {};
+    for(const s of S.sai) porCat[s.cat||'Outros'] = (porCat[s.cat||'Outros']||0) + (parseFloat(s.valor)||0);
+    const sorted = Object.entries(porCat).sort((a,b)=>b[1]-a[1]);
+    if(sorted.length && sorted[0][1] > tS*0.4){
+      out.push({
+        icon:'⚠️', color:'#ef4444',
+        title:`Gasto concentrado em "${sorted[0][0]}"`,
+        body:`Essa categoria representa ${pct(sorted[0][1], tS)}% das suas despesas (${fmt(sorted[0][1])}). Vale revisar.`
+      });
+    }
+  }
+  // nenhuma sugestão? motivacional
+  if(out.length===0){
+    out.push({
+      icon:'💡', color:'#3b82f6',
+      title:'Comece registrando suas movimentações',
+      body:'Quanto mais dados você lança, mais sugestões inteligentes eu te dou.'
+    });
+  }
+  return out;
+}
 
 function render(){
   const app=document.getElementById('app');app.innerHTML='';
@@ -267,6 +546,20 @@ function render(){
     if(saldo<0){
       ct.append(h('div',{className:'banner warn'},'⚠️ Atenção: suas despesas superam as entradas em ',h('strong',null,fmt(Math.abs(saldo))),'.'));
     }
+    // Sugestões inteligentes
+    const sugs = buildSuggestions();
+    const sCard = h('div',{className:'card',style:{border:'1px solid var(--accent)'}}, h('h3',{style:{color:'#22c55e'}},'💡 Sugestões inteligentes'));
+    for(const s of sugs){
+      sCard.append(h('div',{className:'tip'},
+        h('div',{className:'tip-ic',style:{background:s.color+'33',color:s.color}}, s.icon),
+        h('div',{className:'tip-body'},
+          h('b',null,s.title),
+          s.body
+        )
+      ));
+    }
+    ct.append(sCard);
+
     ct.append(h('div',{className:'card'},
       h('h3',null,'📊 Status das Contas'),
       ...['Não Pago','Guardado','Pago'].map(st=>{
@@ -486,25 +779,23 @@ function render(){
     });
   }
 
-  // ═══ BANCOS (nova aba) ═══
+  // ═══ BANCOS ═══
   if(S.tab===6){
     if(!isNative){
       ct.append(h('div',{className:'banner warn'},
-        'Esta tela só funciona quando o app está instalado como APK no Android. No navegador não dá pra ler notificações dos apps de banco.'));
+        'Esta tela só funciona no APK Android. No navegador / iOS PWA não dá pra ler notificações dos apps de banco.'));
     } else if(!BancoNotif){
-      ct.append(h('div',{className:'banner warn'},'Plugin de notificações dos bancos não está disponível neste build.'));
+      ct.append(h('div',{className:'banner warn'},'Plugin de notificações dos bancos não está disponível.'));
     } else {
       ct.append(h('div',{className:'card'},
         h('h3',null,'🔔 Captura automática de movimentações'),
         h('p',{style:{fontSize:'12px',color:'var(--text3)',marginBottom:'10px'}},
-          'O app lê as notificações de PIX, compras e transferências que seus apps de banco (Nubank, Itaú, Bradesco, Santander, Inter, BB, C6, Caixa, Mercado Pago, etc.) disparam, extrai valor + descrição e te deixa lançar com 1 toque. ',
-          h('br'),h('br'),
-          'Nada sai do seu celular — tudo fica local.'
+          'O app lê as notificações de PIX, compras e transferências que seus apps de banco (Nubank, Itaú, Bradesco, Santander, Inter, BB, C6, Caixa, Mercado Pago, etc.) disparam.'
         ),
         S.bankPerm
-          ? h('div',{className:'banner ok'},'✅ Permissão concedida. As notificações dos bancos serão capturadas automaticamente.')
+          ? h('div',{className:'banner ok'},'✅ Permissão concedida.')
           : h('div',null,
-              h('div',{className:'banner warn'},'⚠️ Você precisa habilitar o acesso à notificação. Toque em "Abrir Configurações", encontre "Minhas Finanças" na lista, e ative.'),
+              h('div',{className:'banner warn'},'⚠️ Habilite o acesso à notificação. Toque em "Abrir Configurações", encontre "Minhas Finanças" e ative.'),
               h('button',{className:'btn btn-o',style:{width:'100%',padding:'12px'},on:{click:requestBankPerm}},'Abrir Configurações de Notificação')
             ),
         h('button',{className:'btn-add',style:{marginTop:'10px'},on:{click:refreshBankNotifs}},'🔄 Atualizar lista')
@@ -512,7 +803,7 @@ function render(){
 
       const pend = S.bankNotifs;
       if(!pend.length){
-        ct.append(h('div',{className:'card empty'},'Nenhuma movimentação capturada ainda.\nFaça um PIX/compra e a notificação do banco vai aparecer aqui.'));
+        ct.append(h('div',{className:'card empty'},'Nenhuma movimentação capturada ainda.'));
       } else {
         pend.slice().reverse().forEach(n=>{
           ct.append(h('div',{className:'bank-item '+(n.tipo==='entrada'?'entrada':'saida')},
@@ -526,8 +817,8 @@ function render(){
             h('div',{style:{fontSize:'13px',fontWeight:'600',marginTop:'6px'}},n.titulo||'(sem título)'),
             h('div',{style:{fontSize:'11px',color:'var(--text3)',marginTop:'2px'}},n.texto||''),
             h('div',{className:'bank-actions'},
-              h('button',{className:'btn-g',on:{click:()=>importBankAsEntrada(n)}},'↓ Lançar Entrada'),
-              h('button',{className:'btn-r',on:{click:()=>importBankAsSaida(n)}},'↑ Lançar Saída'),
+              h('button',{className:'btn-g',on:{click:()=>importBankAsEntrada(n)}},'↓ Entrada'),
+              h('button',{className:'btn-r',on:{click:()=>importBankAsSaida(n)}},'↑ Saída'),
               h('button',{style:{flex:'none',width:'40px',background:'var(--bg2)',color:'var(--text3)',border:'1px solid var(--border)'},on:{click:()=>dismissBank(n)}},'✕')
             )
           ));
@@ -557,17 +848,17 @@ function render(){
 
   if(S.modal==='addE') renderModal('E',[
     h('h2',null,'💰 Nova Entrada'),
-    inp(S.newE.desc,'Descrição',v=>{S.newE.desc=v},{style:{marginBottom:'10px',fontWeight:'600'}}),
+    inp(S.newE.desc,'Descrição',v=>{S.newE.desc=v;S.newE.cat=autoCat(v,'entrada');render()},{style:{marginBottom:'10px',fontWeight:'600'}}),
     h('div',{className:'row'},inp(S.newE.data,'',v=>{S.newE.data=v},{type:'date'}),inp(S.newE.valor,'Valor (R$)',v=>{S.newE.valor=v},{type:'number',style:{fontWeight:'700'}})),
-    h('div',{className:'row'},sel(S.newE.cat,CATS_E,v=>{S.newE.cat=v},'Categoria')),
+    h('div',{className:'row'},sel(S.newE.cat,CATS_E,v=>{S.newE.cat=v;render()},'Categoria')),
     inp(S.newE.obs,'Observações',v=>{S.newE.obs=v},{style:{marginBottom:'12px'}})
   ],()=>{if(!S.newE.desc||!S.newE.valor)return;S.ent.push({...S.newE,id:++uid});save();S.newE={desc:'',data:'',cat:'',valor:'',obs:''};S.modal=null;render()});
 
   if(S.modal==='addS') renderModal('S',[
     h('h2',null,'💸 Nova Saída'),
-    inp(S.newS.desc,'Descrição',v=>{S.newS.desc=v},{style:{marginBottom:'10px',fontWeight:'600'}}),
+    inp(S.newS.desc,'Descrição',v=>{S.newS.desc=v;S.newS.cat=autoCat(v,'saida');render()},{style:{marginBottom:'10px',fontWeight:'600'}}),
     h('div',{className:'row'},inp(S.newS.data,'',v=>{S.newS.data=v},{type:'date'}),inp(S.newS.valor,'Valor (R$)',v=>{S.newS.valor=v},{type:'number',style:{fontWeight:'700'}})),
-    h('div',{className:'row'},sel(S.newS.cat,CATS_S,v=>{S.newS.cat=v},'Categoria'),sel(S.newS.forma,FORMAS,v=>{S.newS.forma=v},'Forma')),
+    h('div',{className:'row'},sel(S.newS.cat,CATS_S,v=>{S.newS.cat=v;render()},'Categoria'),sel(S.newS.forma,FORMAS,v=>{S.newS.forma=v},'Forma')),
     h('div',{style:{marginBottom:'12px'}},
       h('div',{style:{fontSize:'12px',fontWeight:'600',marginBottom:'6px',color:'var(--text3)'}},'Status:'),
       h('div',{style:{display:'flex',gap:'6px'}},
@@ -581,25 +872,68 @@ function render(){
 
   if(S.modal==='addM') renderModal('M',[
     h('h2',null,'🏆 Nova Meta'),
+    h('div',{style:{fontSize:'11px',color:'var(--text3)',fontWeight:'600',marginBottom:'6px'}},'TEMPLATES PRONTOS — toca pra pré-preencher:'),
+    h('div',{className:'tpl-grid'},
+      ...META_TEMPLATES.map(t=>h('button',{className:'tpl-btn',on:{click:()=>{
+        const mediaDespesa = tot(S.sai) || 2000;
+        const valor = t.calc==='emergencia' ? Math.round(mediaDespesa*6) : t.valorMeta;
+        S.newM={meta:t.meta, tipo:t.tipo, prazo:'', valorMeta:String(valor), valorReal:'', status:'Em Andamento'};
+        render();
+      }}}, t.emoji+' '+t.meta))
+    ),
+    h('div',{style:{borderTop:'1px solid var(--border)',paddingTop:'10px',marginTop:'4px'}}),
     inp(S.newM.meta,'Nome da meta',v=>{S.newM.meta=v},{style:{marginBottom:'10px',fontWeight:'600'}}),
     h('div',{className:'row'},sel(S.newM.tipo,MTIPOS,v=>{S.newM.tipo=v},'Tipo'),inp(S.newM.prazo,'',v=>{S.newM.prazo=v},{type:'date'})),
     h('div',{className:'row'},inp(S.newM.valorMeta,'Valor meta (R$)',v=>{S.newM.valorMeta=v},{type:'number',style:{fontWeight:'700'}}),inp(S.newM.valorReal,'Realizado',v=>{S.newM.valorReal=v},{type:'number'}))
   ],()=>{if(!S.newM.meta)return;S.metas.push({...S.newM,id:++uid});save();S.newM={meta:'',tipo:'',prazo:'',valorMeta:'',valorReal:'',status:'Em Andamento'};S.modal=null;render()});
 
+  // ═══ IMPORT (file picker + parse + preview) ═══
   if(S.modal==='import'){
-    const md=h('div',{className:'modal',on:{click:e=>{if(e.target===md){S.modal=null;render()}}}},
+    const prev = S.importPreview;
+    const md=h('div',{className:'modal',on:{click:e=>{if(e.target===md){S.modal=null;S.importPreview=null;S.importTxt='';S.importFileName='';render()}}}},
       h('div',{className:'modal-c'},
         h('h2',null,'🏦 Importar Extrato'),
-        h('p',{style:{fontSize:'12px',color:'var(--text3)',marginBottom:'10px'}},'Cole CSV/extrato: data;descrição;valor (positivo=entrada, negativo=saída)'),
-        h('textarea',{placeholder:'10/01/2026;Salário;5000\n12/01/2026;Mercado;-350',style:{marginBottom:'10px'},on:{input:e=>{S.importTxt=e.target.value}}}),
+        h('p',{style:{fontSize:'12px',color:'var(--text3)',marginBottom:'10px',lineHeight:'1.5'}},
+          'Selecione o arquivo do seu banco (CSV, OFX, TXT). O app detecta o formato, separa entradas/saídas automaticamente e categoriza pelas palavras-chave.'
+        ),
+        h('div',{className:'file-drop',on:{click:pickFile}},
+          h('div',{style:{fontSize:'30px',marginBottom:'6px'}},'📁'),
+          h('div',{style:{fontWeight:'700',marginBottom:'2px'}},S.importFileName?S.importFileName:'Escolher arquivo do celular'),
+          h('div',{style:{fontSize:'11px',color:'var(--text3)'}},S.importFileName?'Toque pra trocar':'CSV, OFX, TXT ou QIF')
+        ),
+        h('details',null,
+          h('summary',{style:{fontSize:'12px',color:'var(--text3)',cursor:'pointer',marginBottom:'8px'}},'Ou colar texto direto'),
+          h('textarea',{placeholder:'10/01/2026;Salário;5000\n12/01/2026;Mercado;-350',style:{marginBottom:'10px'},on:{input:e=>{
+            S.importTxt=e.target.value;
+            const items = parseExtrato(e.target.value, '');
+            S.importPreview = items.length ? classifyImport(items) : null;
+            render();
+          }}})
+        ),
+        prev ? h('div',{style:{background:'var(--card)',borderRadius:'12px',padding:'10px',marginTop:'10px',marginBottom:'10px',maxHeight:'260px',overflowY:'auto'}},
+          h('div',{style:{fontSize:'13px',fontWeight:'700',marginBottom:'8px'}},
+            '📋 ',(prev.entradas.length+prev.saidas.length)+' transações detectadas',
+            h('span',{style:{color:'#22c55e',marginLeft:'8px'}},'+'+prev.entradas.length+' entradas'),
+            h('span',{style:{color:'#ef4444',marginLeft:'6px'}},'-'+prev.saidas.length+' saídas')
+          ),
+          ...[...prev.entradas.slice(0,5).map(it=>h('div',{className:'prev-row'},
+            h('span',{className:'prev-tag in'},'+ '+fmt(it.valor)),
+            h('span',{style:{flex:'1',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},it.desc),
+            h('span',{className:'pill'},it.cat||'?')
+          )),
+          ...prev.saidas.slice(0,5).map(it=>h('div',{className:'prev-row'},
+            h('span',{className:'prev-tag out'},'- '+fmt(it.valor)),
+            h('span',{style:{flex:'1',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},it.desc),
+            h('span',{className:'pill'},it.cat||'?')
+          )),
+          (prev.entradas.length+prev.saidas.length>10)?h('div',{style:{fontSize:'11px',color:'var(--text3)',textAlign:'center',marginTop:'4px'}},'+'+((prev.entradas.length+prev.saidas.length)-10)+' mais...'):null
+          ]
+        ) : h('div',{style:{fontSize:'11px',color:'var(--text3)',textAlign:'center',padding:'12px'}},'Selecione um arquivo pra ver o preview'),
         h('div',{className:'row'},
-          h('button',{className:'btn btn-o',style:{flex:'1',padding:'12px'},on:{click:()=>{
-            if(!S.importTxt.trim())return;let ne=0,ns=0;
-            S.importTxt.trim().split('\n').forEach(l=>{const p=l.split(/[;\t,]/).map(x=>x.trim().replace(/"/g,''));if(p.length>=3){const v=parseFloat(p[2].replace(/[^\d.,-]/g,'').replace(',','.'))||0;
-            if(v>0){S.ent.push({desc:p[1],data:p[0],cat:'',valor:Math.abs(v)+'',obs:'Importado',id:++uid});ne++}
-            else if(v<0){S.sai.push({desc:p[1],data:p[0],cat:'',valor:Math.abs(v)+'',forma:'',status:'Pago',obs:'Importado',id:++uid});ns++}}});
-            save();S.importTxt='';S.modal=null;render();showToast(`${ne} entrada(s) e ${ns} saída(s) importadas`);}}},'Importar'),
-          h('button',{className:'btn',style:{flex:'1',padding:'12px',background:'var(--bg)',color:'var(--text3)'},on:{click:()=>{S.modal=null;render()}}},'Cancelar'))
+          h('button',{className:'btn btn-o',style:{flex:'1',padding:'12px',opacity:prev?'1':'0.4'},on:{click:()=>{if(prev)commitImport()}}},
+            prev?`Importar ${(prev.entradas.length+prev.saidas.length)} transações`:'Importar'),
+          h('button',{className:'btn',style:{flex:'1',padding:'12px',background:'var(--bg)',color:'var(--text3)'},on:{click:()=>{S.modal=null;S.importPreview=null;S.importTxt='';S.importFileName='';render()}}},'Cancelar')
+        )
       )
     );app.append(md);
   }
@@ -616,13 +950,11 @@ await scheduleSmartReminders();
 
 if(isNative && BancoNotif){
   await refreshBankNotifs();
-  // listen for new captures while app open
   try{
     BancoNotif.addListener && BancoNotif.addListener('newBankNotif', refreshBankNotifs);
   }catch(e){}
 }
 
-// Web fallback only
 if(!isNative && 'serviceWorker' in navigator){
   const sw=`self.addEventListener('install',e=>self.skipWaiting());self.addEventListener('activate',e=>clients.claim());self.addEventListener('fetch',e=>e.respondWith(fetch(e.request).catch(()=>new Response('Offline'))));`;
   navigator.serviceWorker.register(URL.createObjectURL(new Blob([sw],{type:'application/javascript'}))).catch(()=>{});
