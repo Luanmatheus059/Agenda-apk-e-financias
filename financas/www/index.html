@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#052e16">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Minhas Finanças</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+:root{--bg:#052e16;--bg2:#14532d;--bg3:#166534;--card:#14532d;--card2:#1a5c38;--text:#f0fdf4;--text2:#86efac;--text3:#4ade80;--accent:#22c55e;--red:#ef4444;--orange:#f59e0b;--blue:#3b82f6;--purple:#a855f7;--border:#166534;--radius:14px}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;padding-bottom:80px;padding-top:env(safe-area-inset-top)}
+input,select,textarea{font-family:inherit;color:var(--text);background:var(--bg2);border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;width:100%;outline:none;transition:border .2s}
+input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2386efac' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:30px}
+textarea{resize:vertical;min-height:80px}
+button{font-family:inherit;cursor:pointer;border:none;outline:none;transition:all .15s}
+.hdr{background:linear-gradient(135deg,#052e16,#14532d,#166534);padding:18px 14px 14px;position:sticky;top:0;z-index:100}
+.hdr h1{font-size:21px;font-weight:800;letter-spacing:-.5px}
+.hdr p{font-size:11px;color:var(--text2);margin-top:3px}
+.mcards{display:flex;gap:6px;margin-top:12px;flex-wrap:wrap}
+.mc{flex:1;min-width:95px;background:var(--bg2);border-radius:12px;padding:10px 6px;text-align:center;border:1px solid var(--border)}
+.mc .i{font-size:18px}.mc .v{font-size:15px;font-weight:800;margin:2px 0}.mc .l{font-size:9px;color:var(--text3);font-weight:600;text-transform:uppercase}
+.tabs{display:flex;gap:5px;padding:10px 12px 0;overflow-x:auto}.tabs::-webkit-scrollbar{display:none}
+.tab{padding:7px 14px;border-radius:18px;font-size:11px;font-weight:700;white-space:nowrap;background:var(--bg2);color:var(--text3);border:1px solid var(--border)}
+.tab.on{background:var(--accent);color:#052e16;border-color:var(--accent);box-shadow:0 4px 15px rgba(34,197,94,.3)}
+.ct{padding:10px 12px}
+.card{background:var(--card);border-radius:var(--radius);padding:14px;margin-bottom:12px;border:1px solid var(--border);animation:fi .3s ease}
+@keyframes fi{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.card h3{font-size:15px;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.row{display:flex;gap:8px;margin-bottom:8px}.row>*{flex:1}
+.item{padding:12px;border-radius:12px;margin-bottom:8px;border-left:4px solid;background:var(--card2)}
+.btn{padding:10px 16px;border-radius:10px;font-size:13px;font-weight:700;color:#fff}
+.btn-g{background:var(--accent);color:#052e16}
+.btn-r{background:var(--red)}
+.btn-o{background:var(--orange);color:#052e16}
+.btn-b{background:var(--blue);color:#fff}
+.btn-add{width:100%;padding:12px;border-radius:12px;border:2px dashed var(--border);background:transparent;color:var(--text3);font-size:13px;font-weight:600}
+.progress{height:10px;border-radius:5px;background:var(--bg);overflow:hidden;margin:6px 0}
+.progress-bar{height:100%;border-radius:5px;transition:width .5s}
+.status-btns{display:flex;gap:6px;margin-top:8px}
+.st-btn{flex:1;padding:6px;border-radius:8px;font-size:10px;font-weight:700;text-align:center;background:var(--bg2);color:var(--text3);border:1.5px solid var(--border)}
+.st-btn.on-r{background:rgba(239,68,68,.2);color:#ef4444;border-color:#ef4444}
+.st-btn.on-g{background:rgba(34,197,94,.2);color:#22c55e;border-color:#22c55e}
+.st-btn.on-b{background:rgba(59,130,246,.2);color:#3b82f6;border-color:#3b82f6}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;display:flex;align-items:flex-end;justify-content:center;animation:fi .2s}
+.modal-c{background:var(--bg2);border-radius:20px 20px 0 0;padding:20px 16px 30px;width:100%;max-width:500px;max-height:85vh;overflow-y:auto}
+.modal-c h2{font-size:18px;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.fab{position:fixed;bottom:20px;right:16px;width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 4px 20px rgba(0,0,0,.4);z-index:50}
+.cat-bar{display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;font-weight:600}
+.empty{text-align:center;padding:30px;color:var(--text3)}
+.hist-item{padding:10px;border-radius:10px;margin-bottom:6px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);display:flex;justify-content:space-between;align-items:center}
+.trophy{font-size:28px;animation:bounce 1s infinite}
+@keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+.bank-item{padding:12px;border-radius:12px;margin-bottom:8px;background:var(--card2);border:1px solid var(--border)}
+.bank-item.entrada{border-left:4px solid var(--accent)}
+.bank-item.saida{border-left:4px solid var(--red)}
+.bank-actions{display:flex;gap:6px;margin-top:10px}
+.bank-actions button{flex:1;padding:8px;border-radius:8px;font-size:11px;font-weight:700}
+.toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:10px 16px;border-radius:10px;font-size:12px;z-index:300;box-shadow:0 6px 20px rgba(0,0,0,.4);opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+.banner{padding:12px;border-radius:12px;margin-bottom:12px;border:1px solid;font-size:12px;line-height:1.45}
+.banner.warn{background:rgba(245,158,11,.1);border-color:rgba(245,158,11,.4);color:#fbbf24}
+.banner.ok{background:rgba(34,197,94,.1);border-color:rgba(34,197,94,.4);color:#86efac}
+.pill{display:inline-block;padding:2px 8px;border-radius:8px;font-size:10px;font-weight:700;background:var(--bg);color:var(--text2)}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast" class="toast"></div>
+<script type="module">
+// ─── Capacitor bridge ───
+const Cap = window.Capacitor;
+const isNative = !!(Cap && Cap.isNativePlatform && Cap.isNativePlatform());
+let LocalNotifications = null, BancoNotif = null;
+if (isNative) {
+  try { LocalNotifications = (await import('@capacitor/local-notifications')).LocalNotifications; } catch(e){}
+  try { BancoNotif = Cap.Plugins.BancoNotif; } catch(e){}
+}
+
+const CATS_E=["Salário","Freelance","Vendas Plataforma","Investimentos","Comissão","Outros"];
+const CATS_S=["Moradia","Alimentação","Transporte","Saúde","Educação","Lazer","Vestuário","Contas Fixas","Assinaturas","Aquisição","Outros"];
+const FORMAS=["PIX","Cartão Crédito","Cartão Débito","Dinheiro","Boleto","Transferência"];
+const STS=["Não Pago","Guardado","Pago"];
+const STC={"Não Pago":"#ef4444",Guardado:"#22c55e",Pago:"#3b82f6"};
+const MTIPOS=["Vendas Plataforma","Meta Trabalho","Renda Extra","Economia","Investimento","Pessoal"];
+const MST=["Atingida","Em Andamento","Não Atingida"];
+const INVT=["Renda Fixa","Ações","FIIs","Tesouro Direto","CDB","Cripto","Poupança","Outros"];
+const MES=["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+
+const LS={get(k,d){try{const v=localStorage.getItem('fn4-'+k);return v?JSON.parse(v):d}catch{return d}},set(k,v){try{localStorage.setItem('fn4-'+k,JSON.stringify(v))}catch{}}};
+const fmt=v=>(parseFloat(v)||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const pct=(a,b)=>b?Math.min(100,Math.round(a/b*100)):0;
+let uid=Date.now();
+
+let S={
+  tab:0,modal:null,
+  ent:LS.get('ent',[]),sai:LS.get('sai',[]),
+  aquisicao:LS.get('aquisicao',{nome:'',valor:0,mensal:Array(12).fill(0)}),
+  aquisHist:LS.get('aquisHist',[]),
+  invPct:LS.get('invPct',10),inv:LS.get('inv',Array.from({length:12},()=>({renda:0,investido:0,onde:''}))),
+  metas:LS.get('metas',[]),
+  newE:{desc:'',data:'',cat:'',valor:'',obs:''},
+  newS:{desc:'',data:'',cat:'',valor:'',forma:'',status:'Não Pago',obs:''},
+  newM:{meta:'',tipo:'',prazo:'',valorMeta:'',valorReal:'',status:'Em Andamento'},
+  importTxt:'',
+  bankNotifs:[],
+  bankPerm:false,
+  notifPerm:'default'
+};
+
+function save(){
+  ['ent','sai','aquisicao','aquisHist','invPct','inv','metas'].forEach(k=>LS.set(k,S[k]));
+  scheduleSmartReminders();
+}
+
+function showToast(msg){
+  const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
+  clearTimeout(showToast._t);showToast._t=setTimeout(()=>t.classList.remove('show'),2200);
+}
+
+// ─── Reminders ───
+async function initNotif(){
+  if(isNative && LocalNotifications){
+    const p=await LocalNotifications.checkPermissions();
+    S.notifPerm=p.display==='granted'?'granted':'default';
+    if(S.notifPerm!=='granted'){
+      const r=await LocalNotifications.requestPermissions();
+      S.notifPerm=r.display==='granted'?'granted':'denied';
+    }
+  }
+}
+
+const NID={daily:3000, weekly:3100, lowBalance:3200};
+
+async function scheduleSmartReminders(){
+  if(!isNative || !LocalNotifications || S.notifPerm!=='granted') return;
+  try{
+    const pending=await LocalNotifications.getPending();
+    if(pending.notifications && pending.notifications.length){
+      await LocalNotifications.cancel({notifications:pending.notifications.map(n=>({id:n.id}))});
+    }
+  }catch(e){}
+
+  // Última movimentação?
+  const all=[...S.ent,...S.sai].sort((a,b)=>(b.id||0)-(a.id||0));
+  const last=all[0];
+  let lastTs=0;
+  if(last&&last.id) lastTs=parseInt(last.id);
+  const diasSemLancar=lastTs?Math.floor((Date.now()-lastTs)/86400000):999;
+
+  const notifs=[];
+
+  // Lembrete diário às 20h: cobra lançamentos
+  notifs.push({
+    id:NID.daily,
+    title:'💸 Lançou os gastos de hoje?',
+    body: diasSemLancar>=2
+      ? `Você não lança nada há ${diasSemLancar} dias. Toque pra abrir!`
+      : 'Bora registrar o que entrou e saiu hoje?',
+    schedule:{ on:{ hour:20, minute:0 }, allowWhileIdle:true }
+  });
+
+  // Domingo 19h: revisão financeira
+  notifs.push({
+    id:NID.weekly,
+    title:'📊 Revisão financeira da semana',
+    body:'Confira saldo, gastos por categoria e o progresso da sua próxima aquisição.',
+    schedule:{ on:{ weekday:1, hour:19, minute:0 }, allowWhileIdle:true }
+  });
+
+  // Saldo negativo: alerta agora
+  const saldo=tot(S.ent)-tot(S.sai);
+  if(saldo<0){
+    notifs.push({
+      id:NID.lowBalance,
+      title:'⚠️ Saldo negativo!',
+      body:`Suas despesas superam as entradas em ${fmt(Math.abs(saldo))}. Revise os gastos.`,
+      schedule:{ at: new Date(Date.now()+60_000) }
+    });
+  }
+
+  try{ await LocalNotifications.schedule({notifications:notifs}); }catch(e){console.error(e);}
+}
+function tot(arr){return arr.reduce((s,e)=>s+(parseFloat(e.valor)||0),0)}
+
+// ─── Bank notification capture ───
+async function refreshBankNotifs(){
+  if(!BancoNotif) return;
+  try{
+    const r=await BancoNotif.getCaptured();
+    S.bankNotifs = Array.isArray(r.items) ? r.items : (typeof r.items==='string'?JSON.parse(r.items):[]);
+    const p=await BancoNotif.isPermissionGranted();
+    S.bankPerm = !!p.granted;
+    render();
+  }catch(e){console.warn(e)}
+}
+async function requestBankPerm(){
+  if(!BancoNotif) return;
+  await BancoNotif.openPermissionSettings();
+  showToast('Habilite "Minhas Finanças" na lista');
+}
+function importBankAsEntrada(it){
+  S.ent.push({desc:it.titulo||it.banco,data:it.data,cat:'',valor:String(it.valor),obs:'Banco: '+it.banco,id:++uid});
+  BancoNotif && BancoNotif.markResolved({id:it.id});
+  save();refreshBankNotifs();
+  showToast('Entrada lançada ✅');
+}
+function importBankAsSaida(it){
+  S.sai.push({desc:it.titulo||it.banco,data:it.data,cat:'',valor:String(it.valor),forma:'',status:'Pago',obs:'Banco: '+it.banco,id:++uid});
+  BancoNotif && BancoNotif.markResolved({id:it.id});
+  save();refreshBankNotifs();
+  showToast('Saída lançada ✅');
+}
+function dismissBank(it){
+  BancoNotif && BancoNotif.markResolved({id:it.id});
+  refreshBankNotifs();
+}
+
+function h(t,p,...c){
+  const el=document.createElement(t);
+  if(p)Object.entries(p).forEach(([k,v])=>{
+    if(k==='on'&&typeof v==='object')Object.entries(v).forEach(([e,fn])=>el.addEventListener(e,fn));
+    else if(k==='style'&&typeof v==='object')Object.assign(el.style,v);
+    else if(k==='className')el.className=v;
+    else el.setAttribute(k,v);
+  });
+  c.flat(9).forEach(x=>{if(x!=null)el.append(typeof x==='string'||typeof x==='number'?document.createTextNode(x):x)});
+  return el;
+}
+function inp(v,ph,fn,ex={}){return h('input',{value:v||'',placeholder:ph,...ex,on:{input:e=>fn(e.target.value),change:e=>fn(e.target.value)}})}
+function sel(v,opts,fn,ph='—'){const s=h('select',{on:{change:e=>fn(e.target.value)}});s.append(h('option',{value:''},ph));opts.forEach(o=>{const op=h('option',{value:o},o);if(o===v)op.selected=true;s.append(op)});return s}
+
+function render(){
+  const app=document.getElementById('app');app.innerHTML='';
+  const tE=tot(S.ent), tS=tot(S.sai), saldo=tE-tS;
+  const nPago=S.sai.filter(s=>s.status==='Não Pago').reduce((s,e)=>s+(parseFloat(e.valor)||0),0);
+  const guard=S.sai.filter(s=>s.status==='Guardado').reduce((s,e)=>s+(parseFloat(e.valor)||0),0);
+  const pago=S.sai.filter(s=>s.status==='Pago').reduce((s,e)=>s+(parseFloat(e.valor)||0),0);
+  const aq=S.aquisicao;
+  const aqAcum=aq.mensal.reduce((s,v)=>s+(parseFloat(v)||0),0);
+  const tInv=S.inv.reduce((s,v)=>s+(parseFloat(v.investido)||0),0);
+  const pendentesBanco = S.bankNotifs.filter(n=>!n.resolvido).length;
+
+  app.append(h('div',{className:'hdr'},
+    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
+      h('div',null,h('h1',null,'💰 Minhas Finanças'),h('p',null,new Date().toLocaleDateString('pt-BR',{month:'long',year:'numeric'}))),
+      h('button',{className:'btn btn-o',style:{fontSize:'11px',padding:'8px 12px'},on:{click:()=>{S.modal='import';render()}}},'🏦 Importar')
+    ),
+    h('div',{className:'mcards'},
+      h('div',{className:'mc'},h('div',{className:'i'},'💰'),h('div',{className:'v',style:{color:'#22c55e'}},fmt(tE)),h('div',{className:'l'},'Receitas')),
+      h('div',{className:'mc'},h('div',{className:'i'},'💸'),h('div',{className:'v',style:{color:'#ef4444'}},fmt(tS)),h('div',{className:'l'},'Despesas')),
+      h('div',{className:'mc'},h('div',{className:'i'},saldo>=0?'📈':'📉'),h('div',{className:'v',style:{color:saldo>=0?'#3b82f6':'#ef4444'}},fmt(saldo)),h('div',{className:'l'},'Saldo'))
+    )
+  ));
+
+  const tabs=h('div',{className:'tabs'});
+  ['📊 Painel','💰 Entradas','💸 Saídas','🎯 Aquisição','📈 Investir','🏆 Metas','🔔 Bancos'+(pendentesBanco>0?' ('+pendentesBanco+')':'')].forEach((t,i)=>{
+    tabs.append(h('button',{className:'tab'+(S.tab===i?' on':''),on:{click:()=>{S.tab=i;render()}}},t));
+  });
+  app.append(tabs);
+  const ct=h('div',{className:'ct'});app.append(ct);
+
+  // ═══ PAINEL ═══
+  if(S.tab===0){
+    if(saldo<0){
+      ct.append(h('div',{className:'banner warn'},'⚠️ Atenção: suas despesas superam as entradas em ',h('strong',null,fmt(Math.abs(saldo))),'.'));
+    }
+    ct.append(h('div',{className:'card'},
+      h('h3',null,'📊 Status das Contas'),
+      ...['Não Pago','Guardado','Pago'].map(st=>{
+        const v=st==='Não Pago'?nPago:st==='Guardado'?guard:pago;
+        return h('div',{style:{display:'flex',alignItems:'center',gap:'10px',marginBottom:'10px'}},
+          h('span',{style:{width:'12px',height:'12px',borderRadius:'3px',background:STC[st],flexShrink:'0'}}),
+          h('span',{style:{flex:'1',fontSize:'13px',fontWeight:'600'}},st),
+          h('span',{style:{fontSize:'15px',fontWeight:'800',color:STC[st]}},fmt(v)));
+      })
+    ));
+    if(aq.nome){
+      const p=pct(aqAcum,aq.valor);
+      ct.append(h('div',{className:'card'},
+        h('h3',{style:{color:'#f59e0b'}},'🎯 '+aq.nome),
+        h('div',{className:'cat-bar'},h('span',null,fmt(aqAcum)+' de '+fmt(aq.valor)),h('span',null,p+'%')),
+        h('div',{className:'progress',style:{height:'12px'}},h('div',{className:'progress-bar',style:{width:p+'%',background:'linear-gradient(90deg,#f59e0b,#fbbf24)'}})),
+        p>=100?h('div',{style:{textAlign:'center',marginTop:'6px',color:'#22c55e',fontWeight:'800'}},'🎉 CONQUISTADO!'):
+        h('div',{style:{fontSize:'12px',color:'var(--text3)',marginTop:'4px'}},'Falta: ',h('strong',{style:{color:'#ef4444'}},fmt(Math.max(0,aq.valor-aqAcum))))
+      ));
+    }
+    ct.append(h('div',{className:'card'},
+      h('h3',{style:{color:'#a855f7'}},'📈 Investido no Ano'),
+      h('div',{style:{fontSize:'22px',fontWeight:'800',color:'#a855f7'}},fmt(tInv))
+    ));
+    if(S.sai.length>0){
+      const cc=h('div',{className:'card'},h('h3',null,'📋 Gastos por Categoria'));
+      CATS_S.forEach(cat=>{
+        const t=S.sai.filter(s=>s.cat===cat).reduce((s,e)=>s+(parseFloat(e.valor)||0),0);
+        if(t===0)return;
+        cc.append(h('div',{style:{marginBottom:'8px'}},
+          h('div',{className:'cat-bar'},h('span',null,cat),h('span',null,fmt(t)+' ('+pct(t,tS)+'%)')),
+          h('div',{className:'progress'},h('div',{className:'progress-bar',style:{width:pct(t,tS)+'%',background:'var(--text3)'}}))
+        ));
+      });
+      ct.append(cc);
+    }
+  }
+
+  // ═══ ENTRADAS ═══
+  if(S.tab===1){
+    ct.append(h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'10px'}},
+      h('h3',{style:{fontSize:'16px'}},'💰 Entradas'),
+      h('button',{className:'btn btn-g',style:{fontSize:'12px',padding:'8px 16px'},on:{click:()=>{S.modal='addE';render()}}},'+ Nova')
+    ));
+    if(!S.ent.length) ct.append(h('div',{className:'card empty'},'Nenhuma entrada. Toque + Nova!'));
+    S.ent.slice().reverse().forEach(e=>{
+      ct.append(h('div',{className:'item',style:{borderColor:'#22c55e'}},
+        h('div',{style:{display:'flex',justifyContent:'space-between'}},
+          h('div',null,h('div',{style:{fontWeight:'700',fontSize:'14px'}},e.desc),h('div',{style:{fontSize:'11px',color:'var(--text3)'}},(e.data||'')+' · '+(e.cat||'Sem cat.')+(e.obs?' · '+e.obs:''))),
+          h('div',{style:{textAlign:'right'}},h('div',{style:{fontWeight:'800',fontSize:'16px',color:'#22c55e'}},fmt(e.valor)),
+            h('button',{style:{background:'transparent',color:'#ef4444',fontSize:'11px',fontWeight:'600',marginTop:'4px'},on:{click:()=>{S.ent=S.ent.filter(x=>x.id!==e.id);save();render()}}},'Excluir'))
+        )
+      ));
+    });
+    ct.append(h('div',{className:'card',style:{textAlign:'center',background:'rgba(34,197,94,.1)'}},
+      h('div',{style:{fontSize:'12px',fontWeight:'600',color:'var(--text3)'}},'TOTAL'),h('div',{style:{fontSize:'24px',fontWeight:'800',color:'#22c55e'}},fmt(tE))));
+  }
+
+  // ═══ SAÍDAS ═══
+  if(S.tab===2){
+    ct.append(h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'10px'}},
+      h('h3',{style:{fontSize:'16px'}},'💸 Saídas'),
+      h('button',{className:'btn btn-r',style:{fontSize:'12px',padding:'8px 16px'},on:{click:()=>{S.modal='addS';render()}}},'+ Nova')
+    ));
+    ct.append(h('div',{style:{display:'flex',gap:'6px',marginBottom:'10px'}},
+      ...['Não Pago','Guardado','Pago'].map(st=>{
+        const v=st==='Não Pago'?nPago:st==='Guardado'?guard:pago;
+        return h('div',{style:{flex:'1',padding:'8px 4px',borderRadius:'10px',textAlign:'center',background:`${STC[st]}15`,border:`1px solid ${STC[st]}40`}},
+          h('div',{style:{fontSize:'9px',fontWeight:'700',color:STC[st]}},st.toUpperCase()),h('div',{style:{fontSize:'13px',fontWeight:'800',color:STC[st]}},fmt(v)));
+      })
+    ));
+    if(!S.sai.length) ct.append(h('div',{className:'card empty'},'Nenhuma saída.'));
+    S.sai.slice().reverse().forEach(e=>{
+      ct.append(h('div',{className:'item',style:{borderColor:STC[e.status]||'#666'}},
+        h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:'8px'}},
+          h('div',{style:{flex:'1'}},h('div',{style:{fontWeight:'700',fontSize:'14px'}},e.desc),h('div',{style:{fontSize:'11px',color:'var(--text3)'}},(e.data||'')+' · '+(e.cat||'')+(e.forma?' · '+e.forma:''))),
+          h('div',{style:{textAlign:'right'}},h('div',{style:{fontWeight:'800',fontSize:'16px',color:STC[e.status]}},fmt(e.valor)))
+        ),
+        h('div',{className:'status-btns'},
+          ...STS.map(st=>{
+            const cls=e.status===st?st==='Não Pago'?'st-btn on-r':st==='Guardado'?'st-btn on-g':'st-btn on-b':'st-btn';
+            return h('button',{className:cls,on:{click:()=>{S.sai=S.sai.map(x=>x.id===e.id?{...x,status:st}:x);save();render()}}},
+              st==='Não Pago'?'🔴 ':st==='Guardado'?'🟢 ':'🔵 ',st.split(' ')[0]);
+          }),
+          h('button',{className:'st-btn',style:{flex:'none',width:'36px',color:'#ef4444'},on:{click:()=>{S.sai=S.sai.filter(x=>x.id!==e.id);save();render()}}},'✕')
+        )
+      ));
+    });
+    ct.append(h('div',{className:'card',style:{textAlign:'center',background:'rgba(239,68,68,.1)'}},
+      h('div',{style:{fontSize:'12px',fontWeight:'600',color:'var(--text3)'}},'TOTAL'),h('div',{style:{fontSize:'24px',fontWeight:'800',color:'#ef4444'}},fmt(tS))));
+  }
+
+  // ═══ AQUISIÇÃO ═══
+  if(S.tab===3){
+    const aqP=pct(aqAcum,aq.valor||1);
+    const completo=aq.nome&&aq.valor>0&&aqAcum>=aq.valor;
+    ct.append(h('div',{className:'card',style:{border:'2px solid #f59e0b'}},
+      h('h3',{style:{color:'#f59e0b'}},'🎯 Próxima Aquisição'),
+      h('p',{style:{fontSize:'12px',color:'var(--text3)',marginBottom:'10px'}},'Defina o que quer comprar, o valor total e quanto guardar por mês.'),
+      inp(aq.nome,'O que quer comprar? (ex: Moto, Notebook, Viagem...)',v=>{S.aquisicao.nome=v;save();render()},{style:{marginBottom:'8px',fontWeight:'700',fontSize:'15px'}}),
+      h('div',{className:'row'},
+        h('div',{style:{flex:'1'}},
+          h('label',{style:{fontSize:'11px',color:'var(--text3)',fontWeight:'600',display:'block',marginBottom:'4px'}},'Valor total (R$)'),
+          inp(aq.valor||'','0',v=>{S.aquisicao.valor=parseFloat(v)||0;save();render()},{type:'number',style:{fontWeight:'700',fontSize:'16px'}})
+        )
+      ),
+      aq.nome&&aq.valor>0?[
+        h('div',{style:{marginTop:'12px'}},
+          h('div',{className:'cat-bar'},h('span',null,fmt(aqAcum)+' de '+fmt(aq.valor)),h('span',{style:{color:completo?'#22c55e':'#f59e0b',fontWeight:'800'}},aqP+'%')),
+          h('div',{className:'progress',style:{height:'16px',borderRadius:'8px'}},
+            h('div',{className:'progress-bar',style:{width:aqP+'%',background:completo?'linear-gradient(90deg,#22c55e,#4ade80)':'linear-gradient(90deg,#f59e0b,#fbbf24)',borderRadius:'8px'}}))
+        ),
+        completo?h('div',{style:{textAlign:'center',margin:'14px 0',padding:'16px',background:'rgba(34,197,94,.1)',borderRadius:'14px',border:'2px solid rgba(34,197,94,.3)'}},
+          h('div',{className:'trophy'},'🏆'),
+          h('div',{style:{fontSize:'18px',fontWeight:'800',color:'#22c55e',marginTop:'6px'}},'PARABÉNS! META ALCANÇADA!'),
+          h('div',{style:{fontSize:'13px',color:'var(--text2)',marginTop:'4px'}},'"'+aq.nome+'" — '+fmt(aq.valor)),
+          h('button',{className:'btn btn-g',style:{marginTop:'12px',padding:'12px 24px'},on:{click:()=>{
+            S.aquisHist.push({nome:aq.nome,valor:aq.valor,total:aqAcum,data:new Date().toLocaleDateString('pt-BR')});
+            S.aquisicao={nome:'',valor:0,mensal:Array(12).fill(0)};save();render();
+          }}},'✅ Concluir e começar novo objetivo')
+        ):
+        h('div',{style:{textAlign:'center',marginTop:'8px',fontSize:'13px'}},'Falta: ',h('strong',{style:{color:'#ef4444',fontSize:'16px'}},fmt(Math.max(0,aq.valor-aqAcum))))
+      ]:null
+    ));
+    if(aq.nome&&aq.valor>0){
+      ct.append(h('div',{className:'card'},h('h3',null,'📅 Quanto guardar por mês')));
+      MES.forEach((m,i)=>{
+        const acum=aq.mensal.slice(0,i+1).reduce((s,v)=>s+(parseFloat(v)||0),0);
+        ct.append(h('div',{className:'card',style:{background:i%2===0?'var(--card2)':'var(--card)',padding:'10px 14px'}},
+          h('div',{style:{display:'flex',alignItems:'center',gap:'10px'}},
+            h('div',{style:{width:'40px',height:'40px',borderRadius:'10px',background:'#f59e0b',display:'flex',alignItems:'center',justifyContent:'center',color:'#052e16',fontWeight:'800',fontSize:'12px',flexShrink:'0'}},m),
+            h('div',{style:{flex:'1'}},
+              inp(aq.mensal[i]||'','R$ guardado',v=>{S.aquisicao.mensal[i]=parseFloat(v)||0;save();render()},{type:'number',style:{fontWeight:'700'}})
+            ),
+            h('div',{style:{textAlign:'right',minWidth:'80px'}},
+              h('div',{style:{fontSize:'12px',fontWeight:'700',color:'#f59e0b'}},fmt(acum)),
+              h('div',{style:{fontSize:'10px',color:'var(--text3)'}},pct(acum,aq.valor)+'%')
+            )
+          )
+        ));
+      });
+    }
+    if(S.aquisHist.length>0){
+      ct.append(h('div',{className:'card'},
+        h('h3',{style:{color:'#22c55e'}},'🏆 Conquistas Anteriores'),
+        ...S.aquisHist.map(item=>
+          h('div',{className:'hist-item'},
+            h('div',null,
+              h('div',{style:{fontWeight:'700',fontSize:'13px'}},'✅ '+item.nome),
+              h('div',{style:{fontSize:'11px',color:'var(--text3)'}},item.data+' · Guardou '+fmt(item.total))
+            ),
+            h('div',{style:{fontWeight:'800',color:'#22c55e',fontSize:'14px'}},fmt(item.valor)),
+          )
+        ),
+        h('button',{className:'btn-add',style:{marginTop:'8px',fontSize:'11px',color:'var(--red)',borderColor:'rgba(239,68,68,.3)'},on:{click:()=>{
+          if(confirm('Limpar histórico de conquistas?')){S.aquisHist=[];save();render()}
+        }}},'Limpar histórico')
+      ));
+    }
+  }
+
+  // ═══ INVESTIR ═══
+  if(S.tab===4){
+    ct.append(h('div',{className:'card',style:{border:'2px solid #a855f7'}},
+      h('h3',{style:{color:'#a855f7'}},'📈 Meta de Investimento'),
+      h('div',{style:{display:'flex',gap:'8px',alignItems:'center',marginBottom:'8px'}},
+        h('span',{style:{fontSize:'12px',fontWeight:'600'}},'% da renda:'),
+        h('input',{type:'range',min:'1',max:'50',value:String(S.invPct),style:{flex:'1',accentColor:'#a855f7'},on:{input:e=>{S.invPct=parseInt(e.target.value);save();render()}}}),
+        h('span',{style:{fontWeight:'800',color:'#a855f7',fontSize:'16px'}},S.invPct+'%')
+      ),
+      h('div',{style:{fontSize:'22px',fontWeight:'800',color:'#a855f7',textAlign:'center'}},fmt(tInv))
+    ));
+    MES.forEach((m,i)=>{
+      const inv=S.inv[i]||{renda:0,investido:0,onde:''};
+      const meta=(parseFloat(inv.renda)||0)*S.invPct/100;
+      const ok=parseFloat(inv.investido)>=meta&&meta>0;
+      ct.append(h('div',{className:'card',style:{background:i%2===0?'var(--card2)':'var(--card)'}},
+        h('div',{style:{display:'flex',alignItems:'center',gap:'8px',marginBottom:'8px'}},
+          h('div',{style:{width:'38px',height:'38px',borderRadius:'10px',background:'#a855f7',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:'800',fontSize:'11px',flexShrink:'0'}},m),
+          h('div',{style:{flex:'1',fontWeight:'600'}},m),
+          ok?h('span',{style:{background:'#22c55e',color:'#fff',padding:'3px 8px',borderRadius:'8px',fontSize:'10px',fontWeight:'700'}},'✓ Meta'):null
+        ),
+        h('div',{className:'row'},
+          inp(inv.renda||'','Renda mês',v=>{S.inv[i]={...inv,renda:parseFloat(v)||0};save();render()},{type:'number'}),
+          inp(inv.investido||'','Investido',v=>{S.inv[i]={...inv,investido:parseFloat(v)||0};save();render()},{type:'number',style:{fontWeight:'700'}})
+        ),
+        h('div',{className:'row'},
+          sel(inv.onde,INVT,v=>{S.inv[i]={...inv,onde:v};save();render()},'Onde investiu?'),
+          h('div',{style:{fontSize:'11px',color:'var(--text3)',padding:'10px 4px'}},'Meta: '+fmt(meta))
+        )
+      ));
+    });
+  }
+
+  // ═══ METAS ═══
+  if(S.tab===5){
+    ct.append(h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'10px'}},
+      h('h3',{style:{fontSize:'16px'}},'🏆 Metas Financeiras'),
+      h('button',{className:'btn btn-o',style:{fontSize:'12px',padding:'8px 16px'},on:{click:()=>{S.modal='addM';render()}}},'+ Nova')
+    ));
+    if(!S.metas.length) ct.append(h('div',{className:'card empty'},'Nenhuma meta. Toque + Nova!'));
+    S.metas.forEach(m=>{
+      const p=pct(parseFloat(m.valorReal)||0,parseFloat(m.valorMeta)||1);
+      const c=m.status==='Atingida'?'#22c55e':m.status==='Em Andamento'?'#f59e0b':'#ef4444';
+      ct.append(h('div',{className:'item',style:{borderColor:c}},
+        h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:'6px'}},
+          h('div',null,h('div',{style:{fontWeight:'700',fontSize:'14px'}},m.meta),h('div',{style:{fontSize:'11px',color:'var(--text3)'}},m.tipo+(m.prazo?' · '+m.prazo:''))),
+          h('button',{style:{background:'transparent',color:'#ef4444',fontSize:'14px'},on:{click:()=>{S.metas=S.metas.filter(x=>x.id!==m.id);save();render()}}},'✕')
+        ),
+        h('div',{className:'cat-bar'},h('span',null,fmt(m.valorReal)+' de '+fmt(m.valorMeta)),h('span',null,p+'%')),
+        h('div',{className:'progress'},h('div',{className:'progress-bar',style:{width:p+'%',background:c}})),
+        h('div',{className:'row',style:{marginTop:'8px'}},
+          inp(m.valorReal,'Atualizar realizado',v=>{S.metas=S.metas.map(x=>x.id===m.id?{...x,valorReal:v}:x);save();render()},{type:'number',style:{fontWeight:'700'}}),
+          sel(m.status,MST,v=>{S.metas=S.metas.map(x=>x.id===m.id?{...x,status:v}:x);save();render()},'Status')
+        )
+      ));
+    });
+  }
+
+  // ═══ BANCOS (nova aba) ═══
+  if(S.tab===6){
+    if(!isNative){
+      ct.append(h('div',{className:'banner warn'},
+        'Esta tela só funciona quando o app está instalado como APK no Android. No navegador não dá pra ler notificações dos apps de banco.'));
+    } else if(!BancoNotif){
+      ct.append(h('div',{className:'banner warn'},'Plugin de notificações dos bancos não está disponível neste build.'));
+    } else {
+      ct.append(h('div',{className:'card'},
+        h('h3',null,'🔔 Captura automática de movimentações'),
+        h('p',{style:{fontSize:'12px',color:'var(--text3)',marginBottom:'10px'}},
+          'O app lê as notificações de PIX, compras e transferências que seus apps de banco (Nubank, Itaú, Bradesco, Santander, Inter, BB, C6, Caixa, Mercado Pago, etc.) disparam, extrai valor + descrição e te deixa lançar com 1 toque. ',
+          h('br'),h('br'),
+          'Nada sai do seu celular — tudo fica local.'
+        ),
+        S.bankPerm
+          ? h('div',{className:'banner ok'},'✅ Permissão concedida. As notificações dos bancos serão capturadas automaticamente.')
+          : h('div',null,
+              h('div',{className:'banner warn'},'⚠️ Você precisa habilitar o acesso à notificação. Toque em "Abrir Configurações", encontre "Minhas Finanças" na lista, e ative.'),
+              h('button',{className:'btn btn-o',style:{width:'100%',padding:'12px'},on:{click:requestBankPerm}},'Abrir Configurações de Notificação')
+            ),
+        h('button',{className:'btn-add',style:{marginTop:'10px'},on:{click:refreshBankNotifs}},'🔄 Atualizar lista')
+      ));
+
+      const pend = S.bankNotifs;
+      if(!pend.length){
+        ct.append(h('div',{className:'card empty'},'Nenhuma movimentação capturada ainda.\nFaça um PIX/compra e a notificação do banco vai aparecer aqui.'));
+      } else {
+        pend.slice().reverse().forEach(n=>{
+          ct.append(h('div',{className:'bank-item '+(n.tipo==='entrada'?'entrada':'saida')},
+            h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'4px'}},
+              h('div',{style:{flex:'1',minWidth:'0'}},
+                h('span',{className:'pill'},n.banco||'Banco'),' ',
+                h('span',{className:'pill',style:{background:n.tipo==='entrada'?'rgba(34,197,94,.2)':'rgba(239,68,68,.2)',color:n.tipo==='entrada'?'#86efac':'#fca5a5'}},n.tipo==='entrada'?'↓ Entrada':'↑ Saída')
+              ),
+              h('div',{style:{fontSize:'17px',fontWeight:'800',color:n.tipo==='entrada'?'#22c55e':'#ef4444',whiteSpace:'nowrap',marginLeft:'8px'}},fmt(n.valor))
+            ),
+            h('div',{style:{fontSize:'13px',fontWeight:'600',marginTop:'6px'}},n.titulo||'(sem título)'),
+            h('div',{style:{fontSize:'11px',color:'var(--text3)',marginTop:'2px'}},n.texto||''),
+            h('div',{className:'bank-actions'},
+              h('button',{className:'btn-g',on:{click:()=>importBankAsEntrada(n)}},'↓ Lançar Entrada'),
+              h('button',{className:'btn-r',on:{click:()=>importBankAsSaida(n)}},'↑ Lançar Saída'),
+              h('button',{style:{flex:'none',width:'40px',background:'var(--bg2)',color:'var(--text3)',border:'1px solid var(--border)'},on:{click:()=>dismissBank(n)}},'✕')
+            )
+          ));
+        });
+        ct.append(h('button',{className:'btn-add',style:{marginTop:'8px',color:'var(--red)',borderColor:'rgba(239,68,68,.3)'},on:{click:async()=>{
+          if(confirm('Limpar todas as notificações capturadas?')){
+            await BancoNotif.clearAll();
+            refreshBankNotifs();
+          }
+        }}},'Limpar tudo'));
+      }
+    }
+  }
+
+  // ═══ MODAIS ═══
+  function renderModal(type,fields,onSave){
+    const md=h('div',{className:'modal',on:{click:e=>{if(e.target===md){S.modal=null;render()}}}},
+      h('div',{className:'modal-c'},...fields,
+        h('div',{className:'row',style:{marginTop:'4px'}},
+          h('button',{className:'btn '+(type==='E'?'btn-g':type==='S'?'btn-r':'btn-o'),style:{flex:'1',padding:'12px'},on:{click:onSave}},'Salvar'),
+          h('button',{className:'btn',style:{flex:'1',padding:'12px',background:'var(--bg)',color:'var(--text3)'},on:{click:()=>{S.modal=null;render()}}},'Cancelar')
+        )
+      )
+    );
+    app.append(md);
+  }
+
+  if(S.modal==='addE') renderModal('E',[
+    h('h2',null,'💰 Nova Entrada'),
+    inp(S.newE.desc,'Descrição',v=>{S.newE.desc=v},{style:{marginBottom:'10px',fontWeight:'600'}}),
+    h('div',{className:'row'},inp(S.newE.data,'',v=>{S.newE.data=v},{type:'date'}),inp(S.newE.valor,'Valor (R$)',v=>{S.newE.valor=v},{type:'number',style:{fontWeight:'700'}})),
+    h('div',{className:'row'},sel(S.newE.cat,CATS_E,v=>{S.newE.cat=v},'Categoria')),
+    inp(S.newE.obs,'Observações',v=>{S.newE.obs=v},{style:{marginBottom:'12px'}})
+  ],()=>{if(!S.newE.desc||!S.newE.valor)return;S.ent.push({...S.newE,id:++uid});save();S.newE={desc:'',data:'',cat:'',valor:'',obs:''};S.modal=null;render()});
+
+  if(S.modal==='addS') renderModal('S',[
+    h('h2',null,'💸 Nova Saída'),
+    inp(S.newS.desc,'Descrição',v=>{S.newS.desc=v},{style:{marginBottom:'10px',fontWeight:'600'}}),
+    h('div',{className:'row'},inp(S.newS.data,'',v=>{S.newS.data=v},{type:'date'}),inp(S.newS.valor,'Valor (R$)',v=>{S.newS.valor=v},{type:'number',style:{fontWeight:'700'}})),
+    h('div',{className:'row'},sel(S.newS.cat,CATS_S,v=>{S.newS.cat=v},'Categoria'),sel(S.newS.forma,FORMAS,v=>{S.newS.forma=v},'Forma')),
+    h('div',{style:{marginBottom:'12px'}},
+      h('div',{style:{fontSize:'12px',fontWeight:'600',marginBottom:'6px',color:'var(--text3)'}},'Status:'),
+      h('div',{style:{display:'flex',gap:'6px'}},
+        ...STS.map(st=>h('button',{style:{flex:'1',padding:'10px',borderRadius:'10px',fontWeight:'700',fontSize:'12px',
+          border:S.newS.status===st?`2px solid ${STC[st]}`:'1px solid var(--border)',
+          background:S.newS.status===st?`${STC[st]}25`:'var(--bg2)',color:STC[st]},
+          on:{click:()=>{S.newS.status=st;render()}}},
+          st==='Não Pago'?'🔴':st==='Guardado'?'🟢':'🔵',' ',st)))
+    )
+  ],()=>{if(!S.newS.desc||!S.newS.valor)return;S.sai.push({...S.newS,id:++uid});save();S.newS={desc:'',data:'',cat:'',valor:'',forma:'',status:'Não Pago',obs:''};S.modal=null;render()});
+
+  if(S.modal==='addM') renderModal('M',[
+    h('h2',null,'🏆 Nova Meta'),
+    inp(S.newM.meta,'Nome da meta',v=>{S.newM.meta=v},{style:{marginBottom:'10px',fontWeight:'600'}}),
+    h('div',{className:'row'},sel(S.newM.tipo,MTIPOS,v=>{S.newM.tipo=v},'Tipo'),inp(S.newM.prazo,'',v=>{S.newM.prazo=v},{type:'date'})),
+    h('div',{className:'row'},inp(S.newM.valorMeta,'Valor meta (R$)',v=>{S.newM.valorMeta=v},{type:'number',style:{fontWeight:'700'}}),inp(S.newM.valorReal,'Realizado',v=>{S.newM.valorReal=v},{type:'number'}))
+  ],()=>{if(!S.newM.meta)return;S.metas.push({...S.newM,id:++uid});save();S.newM={meta:'',tipo:'',prazo:'',valorMeta:'',valorReal:'',status:'Em Andamento'};S.modal=null;render()});
+
+  if(S.modal==='import'){
+    const md=h('div',{className:'modal',on:{click:e=>{if(e.target===md){S.modal=null;render()}}}},
+      h('div',{className:'modal-c'},
+        h('h2',null,'🏦 Importar Extrato'),
+        h('p',{style:{fontSize:'12px',color:'var(--text3)',marginBottom:'10px'}},'Cole CSV/extrato: data;descrição;valor (positivo=entrada, negativo=saída)'),
+        h('textarea',{placeholder:'10/01/2026;Salário;5000\n12/01/2026;Mercado;-350',style:{marginBottom:'10px'},on:{input:e=>{S.importTxt=e.target.value}}}),
+        h('div',{className:'row'},
+          h('button',{className:'btn btn-o',style:{flex:'1',padding:'12px'},on:{click:()=>{
+            if(!S.importTxt.trim())return;let ne=0,ns=0;
+            S.importTxt.trim().split('\n').forEach(l=>{const p=l.split(/[;\t,]/).map(x=>x.trim().replace(/"/g,''));if(p.length>=3){const v=parseFloat(p[2].replace(/[^\d.,-]/g,'').replace(',','.'))||0;
+            if(v>0){S.ent.push({desc:p[1],data:p[0],cat:'',valor:Math.abs(v)+'',obs:'Importado',id:++uid});ne++}
+            else if(v<0){S.sai.push({desc:p[1],data:p[0],cat:'',valor:Math.abs(v)+'',forma:'',status:'Pago',obs:'Importado',id:++uid});ns++}}});
+            save();S.importTxt='';S.modal=null;render();showToast(`${ne} entrada(s) e ${ns} saída(s) importadas`);}}},'Importar'),
+          h('button',{className:'btn',style:{flex:'1',padding:'12px',background:'var(--bg)',color:'var(--text3)'},on:{click:()=>{S.modal=null;render()}}},'Cancelar'))
+      )
+    );app.append(md);
+  }
+
+  app.append(h('button',{className:'fab',style:{background:'#ef4444'},on:{click:()=>{
+    if(confirm('Zerar TODOS os dados?')){S.ent=[];S.sai=[];S.metas=[];S.aquisicao={nome:'',valor:0,mensal:Array(12).fill(0)};
+    S.inv=Array.from({length:12},()=>({renda:0,investido:0,onde:''}));save();render()}}}},'🗑'));
+}
+
+// ─── Init ───
+await initNotif();
+render();
+await scheduleSmartReminders();
+
+if(isNative && BancoNotif){
+  await refreshBankNotifs();
+  // listen for new captures while app open
+  try{
+    BancoNotif.addListener && BancoNotif.addListener('newBankNotif', refreshBankNotifs);
+  }catch(e){}
+}
+
+// Web fallback only
+if(!isNative && 'serviceWorker' in navigator){
+  const sw=`self.addEventListener('install',e=>self.skipWaiting());self.addEventListener('activate',e=>clients.claim());self.addEventListener('fetch',e=>e.respondWith(fetch(e.request).catch(()=>new Response('Offline'))));`;
+  navigator.serviceWorker.register(URL.createObjectURL(new Blob([sw],{type:'application/javascript'}))).catch(()=>{});
+}
+</script>
+</body>
+</html>
