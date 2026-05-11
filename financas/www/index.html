@@ -265,6 +265,10 @@ let S={
   market: LS.get('market',{ts:0, indices:[], stocks:[], news:[]}),
   marketLoading: false,
   perfilInv: LS.get('perfilInv','moderado'),
+  news: LS.get('news',[]),
+  newsLoading: false,
+  newsLastTs: LS.get('newsLastTs',0),
+  newsSentiment: {bull:0, bear:0, neutral:0, score:0},
   charts:{},
   // ─── AGENTE ───
   watchlist: LS.get('watchlist',['PETR4','VALE3','BBAS3','BTC','USD-BRL']),
@@ -279,7 +283,7 @@ let S={
 };
 
 function save(){
-  ['ent','sai','aquisicao','aquisHist','invPct','inv','metas','sheetsURL','trello','market','perfilInv','watchlist','alerts','diary','deepseekKey','aiAnalysis'].forEach(k=>LS.set(k,S[k]));
+  ['ent','sai','aquisicao','aquisHist','invPct','inv','metas','sheetsURL','trello','market','perfilInv','watchlist','alerts','diary','deepseekKey','aiAnalysis','news','newsLastTs'].forEach(k=>LS.set(k,S[k]));
   scheduleSmartReminders();
 }
 
@@ -485,7 +489,7 @@ let _tick1s = null, _refreshTimer = null, _rotateTimer = null;
 function startAutoRefresh(){
   if(_tick1s) clearInterval(_tick1s);
   _tick1s = setInterval(()=>{
-    if(S.tab===6 || (S.tab===7 && (S.agenteSub==='signals' || S.agenteSub==='chart'))){
+    if(S.tab===6 || S.tab===7 || (S.tab===8 && (S.agenteSub==='signals' || S.agenteSub==='chart'))){
       const el = document.getElementById('live-clock');
       if(el) el.textContent = new Date().toLocaleTimeString('pt-BR');
     } else {
@@ -498,7 +502,9 @@ function startAutoRefresh(){
     if(S.tab===6){
       await fetchMarket(true);
       render();
-    } else if(S.tab===7 && S.agenteSub==='signals'){
+    } else if(S.tab===7){
+      await fetchAllNews();
+    } else if(S.tab===8 && S.agenteSub==='signals'){
       await runTechAnalysis(true);
     } else {
       clearInterval(_refreshTimer); _refreshTimer=null;
@@ -1049,6 +1055,160 @@ async function scheduleSmartReminders(){
   try{ await LocalNotifications.schedule({notifications:notifs}); }catch(e){console.error(e);}
 }
 function tot(arr){return arr.reduce((s,e)=>s+(parseFloat(e.valor)||0),0)}
+
+// ─── NOTÍCIAS COM IMAGEM (Yahoo Finance + análise de sentimento) ───
+const BULL_KW = ['alta','rally','subida','ganho','lucro','recorde','máxima','maxima','valoriza','salta','dispara','sobe','crescimento','expansão','expansao','bullish','positivo','otimista','recupera','avança','avanca','dispara'];
+const BEAR_KW = ['queda','crise','recessão','recessao','perda','tomba','desvaloriza','preocupa','alerta','despenca','cai','tomba','crash','colapso','crash','bearish','negativo','pessimista','recua','derruba','tomb','despenca','bear'];
+
+function analyzeSentiment(text){
+  const t = (text||'').toLowerCase();
+  let bull = 0, bear = 0;
+  for(const kw of BULL_KW) if(t.includes(kw)) bull++;
+  for(const kw of BEAR_KW) if(t.includes(kw)) bear++;
+  if(bull > bear) return {label:'BULL', emoji:'🟢', color:'#10b981', score:bull-bear};
+  if(bear > bull) return {label:'BEAR', emoji:'🔴', color:'#f43f5e', score:bear-bull};
+  return {label:'NEUTRO', emoji:'⚪', color:'#9ca3af', score:0};
+}
+
+async function fetchAllNews(){
+  // Cache 60s pra não martelar
+  if(Date.now() - S.newsLastTs < 60_000 && S.news.length) return;
+  S.newsLoading = true; render();
+  const all = [];
+  // 1. Yahoo Finance News (sem auth)
+  try{
+    const queries = ['stock market','ibovespa','petr4','vale3','bitcoin','dolar'];
+    for(const q of queries.slice(0,3)){
+      try{
+        const r = await fetch(`https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&newsCount=10`);
+        if(r.ok){
+          const d = await r.json();
+          for(const n of (d.news||[])){
+            if(!n.title) continue;
+            const sent = analyzeSentiment(n.title);
+            all.push({
+              title: n.title,
+              link: n.link,
+              source: n.publisher || 'Yahoo',
+              date: n.providerPublishTime ? n.providerPublishTime*1000 : Date.now(),
+              image: (n.thumbnail?.resolutions?.[0]?.url) || null,
+              sentiment: sent
+            });
+          }
+        }
+      }catch(e){console.warn('yahoo news',q,e.message)}
+    }
+  }catch(e){console.warn('yahoo news fail',e)}
+
+  // 2. Investing.com RSS (via rss2json proxy gratuito)
+  try{
+    const r = await fetch('https://api.rss2json.com/v1/api.json?rss_url='+encodeURIComponent('https://br.investing.com/rss/news.rss'));
+    if(r.ok){
+      const d = await r.json();
+      for(const item of (d.items||[]).slice(0,15)){
+        const sent = analyzeSentiment(item.title);
+        all.push({
+          title: item.title,
+          link: item.link,
+          source: 'Investing.com',
+          date: item.pubDate ? new Date(item.pubDate).getTime() : Date.now(),
+          image: item.thumbnail || item.enclosure?.link || null,
+          sentiment: sent
+        });
+      }
+    }
+  }catch(e){console.warn('rss2json investing fail',e)}
+
+  // Dedup por título + ordena por data desc
+  const seen = new Set();
+  const unique = [];
+  for(const n of all){
+    const k = n.title.toLowerCase().slice(0,60);
+    if(!seen.has(k)){ seen.add(k); unique.push(n); }
+  }
+  unique.sort((a,b)=>b.date-a.date);
+  S.news = unique.slice(0, 50);
+
+  // Agrega sentimento global
+  let bull=0, bear=0, neutral=0;
+  for(const n of S.news){
+    if(n.sentiment.label==='BULL') bull++;
+    else if(n.sentiment.label==='BEAR') bear++;
+    else neutral++;
+  }
+  const total = bull+bear+neutral || 1;
+  S.newsSentiment = {
+    bull, bear, neutral,
+    score: ((bull - bear) / total * 100).toFixed(0)
+  };
+  S.newsLastTs = Date.now();
+  S.newsLoading = false;
+  save();
+  render();
+}
+
+function renderNewsTab(ct){
+  // Header
+  ct.append(h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'12px',padding:'14px',background:'linear-gradient(135deg,rgba(212,175,55,.1),rgba(0,0,0,.4))',borderRadius:'14px',border:'1px solid var(--border-gold)'}},
+    h('div',null,
+      h('div',{style:{fontSize:'17px',fontWeight:'800',display:'flex',alignItems:'center',gap:'8px'}},
+        h('span',{className:'pulse'}),'📰 Notícias do Mercado',h('span',{className:'live-badge'},'AO VIVO')
+      ),
+      h('div',{id:'live-clock',style:{fontSize:'11px',color:'var(--text2)',marginTop:'4px',fontWeight:'600'}},new Date().toLocaleTimeString('pt-BR'))
+    ),
+    h('button',{className:'refresh-btn',on:{click:()=>{S.newsLastTs=0;fetchAllNews()}}},S.newsLoading?'⏳':'🔄')
+  ));
+
+  // Sentimento agregado (BULL/BEAR/NEUTRO)
+  const s = S.newsSentiment;
+  const total = (s.bull||0)+(s.bear||0)+(s.neutral||0);
+  const dominant = (s.bull>s.bear) ? {label:'BULLISH 📈', color:'#10b981', body:'Maioria das notícias com viés POSITIVO'}
+                  : (s.bear>s.bull) ? {label:'BEARISH 📉', color:'#f43f5e', body:'Maioria das notícias com viés NEGATIVO'}
+                  : {label:'NEUTRO ⚪', color:'#9ca3af', body:'Sem viés dominante nas manchetes'};
+  ct.append(h('div',{className:'card',style:{border:'2px solid '+dominant.color}},
+    h('div',{style:{textAlign:'center'}},
+      h('div',{style:{fontSize:'11px',color:'var(--text3)',fontWeight:'700',letterSpacing:'.5px'}},'SENTIMENTO DAS MANCHETES'),
+      h('div',{style:{fontSize:'24px',fontWeight:'900',margin:'6px 0',color:dominant.color}},dominant.label),
+      h('div',{style:{fontSize:'11px',color:'var(--text2)',marginBottom:'10px'}},dominant.body),
+      h('div',{style:{display:'flex',gap:'8px',justifyContent:'center'}},
+        h('div',{className:'kpi',style:{flex:'1'}},h('div',{className:'l'},'🟢 Bull'),h('div',{className:'v',style:{color:'#10b981'}},s.bull||0)),
+        h('div',{className:'kpi',style:{flex:'1'}},h('div',{className:'l'},'⚪ Neutro'),h('div',{className:'v',style:{color:'#9ca3af'}},s.neutral||0)),
+        h('div',{className:'kpi',style:{flex:'1'}},h('div',{className:'l'},'🔴 Bear'),h('div',{className:'v',style:{color:'#f43f5e'}},s.bear||0))
+      ),
+      h('div',{style:{fontSize:'10px',color:'var(--text3)',marginTop:'8px'}},
+        'Análise educacional baseada em palavras-chave das manchetes (alta/queda/recorde/crise/etc). Não é recomendação.'
+      )
+    )
+  ));
+
+  // Lista de notícias
+  if(!S.news.length){
+    ct.append(h('div',{className:'card empty'}, S.newsLoading?'⏳ Carregando notícias...':'Toque 🔄 pra buscar notícias.'));
+    return;
+  }
+  ct.append(h('div',{style:{fontSize:'12px',color:'var(--text3)',marginBottom:'8px',padding:'0 4px',fontWeight:'700'}},
+    '📡 '+S.news.length+' notícias · Yahoo Finance + Investing.com'
+  ));
+  for(const n of S.news){
+    const ago = (Date.now() - n.date) / 60_000;
+    const agoStr = ago < 1 ? 'agora' : ago < 60 ? Math.floor(ago)+'min' : ago < 1440 ? Math.floor(ago/60)+'h' : Math.floor(ago/1440)+'d';
+    const card = h('a',{href:n.link,target:'_blank',rel:'noopener',style:{display:'block',textDecoration:'none',color:'inherit'}},
+      h('div',{className:'card',style:{padding:'12px',marginBottom:'10px',cursor:'pointer'}},
+        n.image ? h('img',{src:n.image,style:{width:'100%',height:'160px',objectFit:'cover',borderRadius:'8px',marginBottom:'10px',background:'var(--bg2)'},
+          on:{error:e=>{e.target.style.display='none'}}}) : null,
+        h('div',{style:{display:'flex',gap:'6px',alignItems:'center',marginBottom:'6px'}},
+          h('span',{className:'pill',style:{background:n.sentiment.color+'33',color:n.sentiment.color,fontWeight:'800'}},
+            n.sentiment.emoji+' '+n.sentiment.label
+          ),
+          h('span',{className:'pill'},n.source),
+          h('span',{style:{fontSize:'10px',color:'var(--text3)',marginLeft:'auto'}},agoStr)
+        ),
+        h('div',{style:{fontSize:'13px',fontWeight:'700',lineHeight:'1.4',color:'var(--text)'}},n.title)
+      )
+    );
+    ct.append(card);
+  }
+}
 
 // ─── AGENDAMENTO AGRESSIVO DE NOTIFICAÇÕES (48h, variadas) ───
 // Cria 30-60 notificações com conteúdo diverso pras próximas 48h.
@@ -1813,11 +1973,12 @@ function render(){
   ));
 
   const tabs=h('div',{className:'tabs'});
-  ['📊 Painel','💰 Entradas','💸 Saídas','🎯 Aquisição','📈 Investir','🏆 Metas','📰 Mercado','🤖 Agente','🔔 Bancos'+(pendentesBanco>0?' ('+pendentesBanco+')':'')].forEach((t,i)=>{
+  ['📊 Painel','💰 Entradas','💸 Saídas','🎯 Aquisição','📈 Investir','🏆 Metas','📰 Mercado','📰 Notícias','🤖 Agente','🔔 Bancos'+(pendentesBanco>0?' ('+pendentesBanco+')':'')].forEach((t,i)=>{
     tabs.append(h('button',{className:'tab'+(S.tab===i?' on':''),on:{click:()=>{
       S.tab=i;
       if(i===6){fetchMarket();startAutoRefresh()}
-      if(i===7){startAutoRefresh()}
+      if(i===7){fetchAllNews();}
+      if(i===8){startAutoRefresh()}
       render();
     }}},t));
   });
@@ -2463,8 +2624,11 @@ function render(){
     }
   }
 
-  // ═══ AGENTE FINANCEIRO ═══
-  if(S.tab===7){
+  // ═══ NOTÍCIAS (tab 7) ═══
+  if(S.tab===7){ renderNewsTab(ct); }
+
+  // ═══ AGENTE FINANCEIRO (tab 8) ═══
+  if(S.tab===8){
     // Header do Agente com badge AO VIVO + clock
     ct.append(h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'12px',padding:'14px',background:'linear-gradient(135deg,rgba(139,92,246,.12),rgba(6,182,212,.08))',borderRadius:'14px',border:'1px solid rgba(139,92,246,.3)'}},
       h('div',null,
@@ -2867,8 +3031,8 @@ function render(){
     }
   }
 
-  // ═══ BANCOS ═══
-  if(S.tab===8){
+  // ═══ BANCOS (tab 9) ═══
+  if(S.tab===9){
     if(!isNative){
       ct.append(h('div',{className:'banner warn'},
         'Esta tela só funciona no APK Android. No navegador / iOS PWA não dá pra ler notificações dos apps de banco.'));
