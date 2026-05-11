@@ -1378,78 +1378,81 @@ async function scheduleAggressiveNotifications(){
   const now = Date.now();
   let newsIdx = 0;
 
-  // Próximas 168h (7 DIAS), varrendo de hora em hora
-  for(let h=1; h<=168; h++){
-    const when = new Date(now + h * 3600_000);
+  // Próximos 7 dias × 48 slots/dia (cada 30 min) = 336 slots × densidade alta
+  // Limite Android: ~500 alarmes simultâneos. Vamos pra 400-450.
+  const slots = 7 * 24 * 2; // 30 em 30 minutos
+  for(let s=1; s<=slots; s++){
+    const when = new Date(now + s * 30 * 60_000);
     const wh = when.getHours();
+    const wm = when.getMinutes();
     const wd = when.getDay();
     const isWkday = wd>=1 && wd<=5;
     const isOpen = isWkday && wh>=10 && wh<=18;
+    const slotHour = wm === 0;  // top da hora
 
-    // Snapshot do mercado de hora em hora durante pregão
+    // ─── DURANTE PREGÃO (10h-18h dias úteis): snapshot a cada 30 min ───
     if(isOpen){
       notifs.push({
         id: nid++,
-        title: `📊 Mercado · ${wh}h`,
-        body: mSnap + (wh===18?' · Pregão encerrando':''),
+        title: `📊 Mercado · ${wh}h${wm===30?'30':''}`,
+        body: mSnap,
         channelId:'financas-default',
         schedule:{ at: when }
       });
     }
 
-    // Notícia a cada 3h durante o dia (8h-22h)
-    if(wh>=8 && wh<=22 && h%3===0 && news.length){
+    // ─── NOTÍCIA a cada 30min nos horários ativos (8h-23h todos os dias) ───
+    if(wh>=8 && wh<=23 && news.length){
       const n = news[newsIdx % news.length]; newsIdx++;
       const title = n.title.length>80 ? n.title.slice(0,77)+'...' : n.title;
       notifs.push({
         id: nid++,
         title: '🗞️ ' + title,
-        body: (n.source || n.publisher || 'Notícia financeira') + (n.publishedAt?' · '+new Date(n.publishedAt).toLocaleDateString('pt-BR'):''),
+        body: (n.source || n.publisher || 'Notícia financeira'),
         channelId:'financas-default',
         schedule:{ at: when }
       });
     }
 
-    // Dica educacional a cada 5h
-    if(wh>=9 && wh<=22 && h%5===0){
-      const dica = DICAS[Math.floor(Math.random()*DICAS.length)];
+    // ─── DICA EDUCACIONAL a cada 90 min (8h-22h) ───
+    if(wh>=8 && wh<=22 && slotHour && s%3===0){
       notifs.push({
         id: nid++,
         title: '💡 Dica do dia',
-        body: dica,
+        body: DICAS[Math.floor(Math.random()*DICAS.length)],
         channelId:'financas-default',
         schedule:{ at: when }
       });
     }
 
-    // Lembrete de análise técnica antes do pregão (9h30 dias úteis)
-    if(isWkday && wh===9 && when.getMinutes()===0){
+    // ─── ABERTURA (9h30) ───
+    if(isWkday && wh===9 && wm===30){
       notifs.push({
         id: nid++,
-        title: '📡 Análise técnica disponível',
-        body: 'Abra o app → Agente → Sinais pra ver setups detectados',
+        title: '📡 Pré-pregão · análise técnica',
+        body: 'Abra Agente → Sinais pra ver setups detectados antes da abertura',
         channelId:'financas-default',
-        schedule:{ at: new Date(when.getTime() + 30*60_000) }
+        schedule:{ at: when }
       });
     }
 
-    // Resumo de fechamento (18h05 dias úteis)
-    if(isWkday && wh===18){
+    // ─── FECHAMENTO (18h05) ───
+    if(isWkday && wh===18 && wm===0){
       notifs.push({
         id: nid++,
         title: '🏁 Pregão encerrado',
-        body: 'Resumo do dia: '+mSnap+'. Abra o app pra ver setups.',
+        body: 'Resumo: '+mSnap,
         channelId:'financas-default',
         schedule:{ at: new Date(when.getTime() + 5*60_000) }
       });
     }
 
-    // Notícias internacionais e cripto também aos finais de semana (mercado 24/7)
-    if(!isWkday && (wh===10 || wh===14 || wh===18)){
+    // ─── CRIPTO 24/7: fim de semana e madrugada (mercado nunca dorme) ───
+    if(!isOpen && slotHour && wh%4===0){  // a cada 4h
       notifs.push({
         id: nid++,
-        title: '₿ Cripto + Internacionais',
-        body: 'Bitcoin e mercados globais operam 24/7. Acompanhe no app aba Notícias.',
+        title: '₿ Cripto · 24/7',
+        body: 'Bitcoin opera ininterrupto. Veja preços e notícias no app aba Notícias.',
         channelId:'financas-default',
         schedule:{ at: when }
       });
@@ -2214,7 +2217,7 @@ function render(){
         h('div',{style:{flex:'1'}},
           h('div',{style:{fontSize:'13px',fontWeight:'800'}}, notifOn?'🔔 Notificações em tempo real ATIVAS':'🔕 Notificações em tempo real DESATIVADAS'),
           h('div',{style:{fontSize:'10px',color:'var(--text3)',marginTop:'2px'}},
-            notifOn?'Você recebe ~50 notifs/dia: mercado, notícias, dicas, setups. Toque pra reagendar agora.':'Toque pra ativar e receber atualizações do mercado a cada 1-2h'
+            notifOn?'⚡ ILIMITADAS · A cada 30min durante pregão. Notícias, mercado, dicas, setups. Reagenda sozinho a cada hora.':'Toque pra ativar fluxo contínuo a cada 30min'
           )
         ),
         h('button',{className:'btn '+(notifOn?'btn-g':'btn-o'),style:{padding:'10px 14px',fontSize:'11px'},on:{click:async()=>{
@@ -3538,11 +3541,44 @@ await scheduleSmartReminders();
 (async()=>{
   try{
     await fetchMarket(true);
-    // Agenda 30-60 notificações pras próximos 7 dias
     const n = await scheduleAggressiveNotifications();
-    if(n) console.log('✅ '+n+' notificações 24/7 agendadas pros próximos 7 dias');
+    if(n) console.log('✅ '+n+' notificações ILIMITADAS agendadas');
   }catch(e){console.warn('init notif failed',e)}
 })();
+
+// REAGENDAMENTO PERPÉTUO — a cada 1h enquanto app aberto, reagenda 7 dias frescos
+setInterval(async ()=>{
+  if(document.visibilityState === 'visible' && S.notifPerm === 'granted'){
+    try{
+      await fetchMarket(true);
+      const n = await scheduleAggressiveNotifications();
+      console.log('🔄 Reagendamento perpétuo: '+n+' notif');
+    }catch(e){console.warn('reagendar fail',e)}
+  }
+}, 3600_000); // 1 hora
+
+// Quando app volta ao foreground, reagenda imediato
+document.addEventListener('visibilitychange', async ()=>{
+  if(document.visibilityState === 'visible' && S.notifPerm === 'granted'){
+    try{ await scheduleAggressiveNotifications(); }catch(e){}
+  }
+});
+
+// Listener: quando user toca em notificação, reagenda no callback
+if(isNative && LocalNotifications){
+  try{
+    LocalNotifications.addListener('localNotificationActionPerformed', async ()=>{
+      try{
+        await fetchMarket(true);
+        await scheduleAggressiveNotifications();
+      }catch(e){}
+    });
+    LocalNotifications.addListener('localNotificationReceived', async ()=>{
+      // Re-agenda silenciosamente quando notif dispara
+      try{ await scheduleAggressiveNotifications(); }catch(e){}
+    });
+  }catch(e){}
+}
 
 if(isNative && BancoNotif){
   await refreshBankNotifs();
