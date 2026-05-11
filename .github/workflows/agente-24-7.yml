@@ -1,0 +1,72 @@
+name: 🤖 Agente Financeiro 24/7
+
+# Roda automaticamente a cada 15 min, 24/7, GRÁTIS
+# Você só precisa configurar os Secrets:
+#   - TELEGRAM_BOT_TOKEN (do @BotFather)
+#   - TELEGRAM_CHAT_ID (seu chat ID)
+#
+# Limite GitHub Actions free: 2000 min/mês
+# Custo por execução: ~30s
+# 15 min × 24h × 30 dias × 0.5min = 720 min/mês → couber tranquilo
+
+on:
+  schedule:
+    # A cada 15 minutos
+    - cron: '*/15 * * * *'
+  workflow_dispatch:  # Permite rodar manualmente
+
+# Garante que não rode múltiplas execuções em paralelo
+concurrency:
+  group: agente-financeiro
+  cancel-in-progress: false
+
+jobs:
+  analyze:
+    name: Análise + Notificação Telegram
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+
+      - name: Install deps
+        working-directory: worker
+        run: npm ci --no-audit --no-fund
+
+      - name: Restore state cache
+        uses: actions/cache@v4
+        with:
+          path: worker/.state.json
+          key: agente-state-${{ github.run_id }}
+          restore-keys: |
+            agente-state-
+
+      - name: Rodar agente (single-run)
+        working-directory: worker
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          WATCHLIST: ${{ vars.WATCHLIST || 'PETR4,VALE3,ITUB4,BBAS3,MGLU3,WEGE3,B3SA3,BTC,ETH,USD-BRL' }}
+          ALERT_LEVEL: ${{ vars.ALERT_LEVEL || 'medium' }}
+          NOTIFY_24_7: ${{ vars.NOTIFY_24_7 || 'true' }}
+          SEND_DAILY_SUMMARY: 'true'
+          DAILY_SUMMARY_HOUR: '8'
+          MARKET_OPEN_HOUR: '10'
+          MARKET_CLOSE_HOUR: '18'
+          SINGLE_RUN: 'true'
+        run: node src/index.js
+
+      - name: Save state cache
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: worker/.state.json
+          key: agente-state-${{ github.run_id }}

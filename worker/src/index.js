@@ -123,14 +123,39 @@ async function sendCloseSummary() {
 
 // ─── boot ───
 async function main() {
+  const SINGLE_RUN = process.env.SINGLE_RUN === 'true';
+
   console.log('🤖 Agente Financeiro iniciando...');
   console.log(`   Watchlist: ${WATCHLIST.join(', ')}`);
-  console.log(`   Intervalo: ${INTERVAL} min`);
+  console.log(`   Modo: ${SINGLE_RUN ? 'single-run (GitHub Actions cron)' : 'daemon (server)'}`);
   console.log(`   Nível alerta: ${ALERT_LEVEL}`);
-  console.log(`   Modo: ${NOTIFY_24_7 ? '24/7' : 'pregão only'}`);
 
   await loadState();
 
+  // Modo single-run: roda uma vez e sai (ideal pra cron externo tipo GitHub Actions)
+  if (SINGLE_RUN) {
+    try {
+      await analyzeWatchlist();
+      // Verifica se é hora de mandar resumo diário (entre 8h-9h)
+      const h = new Date().getHours();
+      const day = new Date().getDay();
+      const isWeekday = day >= 1 && day <= 5;
+      if (process.env.SEND_DAILY_SUMMARY === 'true' && isWeekday && h === parseInt(process.env.DAILY_SUMMARY_HOUR || '8')) {
+        await sendDailySummary();
+      }
+      // Resumo fechamento entre 18h-19h
+      if (isWeekday && h === 18) {
+        await sendCloseSummary();
+      }
+    } catch (e) {
+      console.error('Erro no single-run:', e);
+      process.exit(1);
+    }
+    console.log('✅ Single-run concluído.');
+    process.exit(0);
+  }
+
+  // Modo daemon (servidor sempre ligado)
   try { await sendStartup(); } catch (e) { console.error('Falha startup msg:', e.message); }
 
   // primeira análise imediata
