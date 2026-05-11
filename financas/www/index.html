@@ -327,7 +327,7 @@ function parseOFX(text){
   const out = [];
   const txns = text.match(/<STMTTRN>[\s\S]*?<\/STMTTRN>/g) || [];
   for(const t of txns){
-    const trnType = (t.match(/<TRNTYPE>([^<\n\r]+)/i)||[])[1] || '';
+    const trnType = ((t.match(/<TRNTYPE>([^<\n\r]+)/i)||[])[1] || '').toUpperCase().trim();
     const dt = (t.match(/<DTPOSTED>([^<\n\r]+)/i)||[])[1] || '';
     const amt = (t.match(/<TRNAMT>([^<\n\r]+)/i)||[])[1] || '0';
     const memo = (t.match(/<MEMO>([^<\n\r]+)/i)||[])[1] || '';
@@ -335,10 +335,17 @@ function parseOFX(text){
     const desc = (name+' '+memo).trim() || trnType || 'Transação';
     const v = parseFloat(amt) || 0;
     if(v===0) continue;
+    // OFX TRNTYPE: CREDIT/DEBIT/DEP/PAYMENT/CHECK/XFER/POS/ATM/INT
+    let tipo = null;
+    if(/CREDIT|DEP|INT|DIV/.test(trnType)) tipo='entrada';
+    else if(/DEBIT|PAYMENT|CHECK|ATM|POS/.test(trnType)) tipo='saida';
+    else if(v<0) tipo='saida';
+    else if(v>0) tipo='entrada';
     out.push({
       data: parseBRDate(dt.slice(0,8)),
       desc: desc.replace(/\s+/g,' ').trim(),
-      valor: v
+      valor: v,
+      tipo
     });
   }
   return out;
@@ -348,31 +355,72 @@ function parseCSV(text){
   const out = [];
   const lines = text.split(/\r?\n/).filter(l => l.trim());
   if(!lines.length) return out;
-  // Detecta separador
   const sample = lines[0];
   const sep = sample.includes(';') ? ';' : sample.includes('\t') ? '\t' : ',';
-  // Pula linha de cabeçalho se a 1ª linha não tem número
-  let start = 0;
-  const firstCols = lines[0].split(sep);
-  const hasNumber = firstCols.some(c => /\d/.test(c) && !/^[a-zA-Z]/.test(c.trim()));
-  if(!hasNumber || /data|descri|valor|hist[oó]r/i.test(lines[0])) start = 1;
+
+  // ─── Detecta colunas pelo cabeçalho ───
+  // Procura headers comuns: Data, Descrição/Histórico, Valor, Débito, Crédito, Tipo, D/C
+  const firstCols = lines[0].split(sep).map(c => c.trim().replace(/^"|"$/g,''));
+  const hasHeader = /data|descri|valor|hist[oó]r|d[ée]bito|cr[eé]dito|tipo|d\/c/i.test(lines[0]);
+  let idxData=-1, idxDesc=-1, idxValor=-1, idxDeb=-1, idxCred=-1, idxTipo=-1;
+  if(hasHeader){
+    firstCols.forEach((c,i)=>{
+      const cl = c.toLowerCase();
+      if(idxData<0 && /^data|^dt/.test(cl)) idxData=i;
+      else if(idxDesc<0 && /descri|hist[oó]r|memo|t[ií]tulo|name/.test(cl)) idxDesc=i;
+      else if(/d[ée]bito|debit/.test(cl) && !/cr/.test(cl)) idxDeb=i;
+      else if(/cr[eé]dito|credit/.test(cl)) idxCred=i;
+      else if(idxValor<0 && /^valor$|^amount|^vlr$|^valor\s*\(/i.test(cl)) idxValor=i;
+      else if(idxTipo<0 && /^tipo$|^d\/c$|^dc$|^natureza/.test(cl)) idxTipo=i;
+    });
+  }
+
+  const start = hasHeader ? 1 : 0;
 
   for(let i=start; i<lines.length; i++){
     const cols = lines[i].split(sep).map(c => c.trim().replace(/^"|"$/g,''));
     if(cols.length < 2) continue;
-    // Heurística: 1ª coluna data, última coluna valor, do meio: descrição
-    let data='', desc='', valor=0;
-    if(cols.length >= 3){
-      data = parseBRDate(cols[0]);
-      valor = parseBRMoney(cols[cols.length-1]);
-      desc = cols.slice(1, cols.length-1).join(' - ').trim();
+
+    let data='', desc='', valor=0, tipo=null;
+
+    if(idxData>=0 || idxDesc>=0 || idxValor>=0 || idxDeb>=0 || idxCred>=0){
+      // Tem header — usa os índices detectados
+      data = parseBRDate(cols[idxData>=0?idxData:0] || '');
+      desc = cols[idxDesc>=0?idxDesc:1] || '';
+      if(idxDeb>=0 && idxCred>=0){
+        const d = parseBRMoney(cols[idxDeb]);
+        const c = parseBRMoney(cols[idxCred]);
+        if(d>0){ valor = d; tipo='saida'; }
+        else if(c>0){ valor = c; tipo='entrada'; }
+      } else if(idxValor>=0){
+        valor = parseBRMoney(cols[idxValor]);
+      } else {
+        // último número da linha como fallback
+        valor = parseBRMoney(cols[cols.length-1]);
+      }
+      if(idxTipo>=0 && !tipo){
+        const t = (cols[idxTipo]||'').toLowerCase().trim();
+        if(t==='d' || t==='débito' || t==='debito' || t==='dr' || t==='-') tipo='saida';
+        else if(t==='c' || t==='crédito' || t==='credito' || t==='cr' || t==='+') tipo='entrada';
+      }
     } else {
-      data = parseBRDate(cols[0]);
-      desc = '';
-      valor = parseBRMoney(cols[1]);
+      // Sem header — heurística antiga
+      if(cols.length >= 3){
+        data = parseBRDate(cols[0]);
+        valor = parseBRMoney(cols[cols.length-1]);
+        desc = cols.slice(1, cols.length-1).join(' - ').trim();
+      } else {
+        data = parseBRDate(cols[0]);
+        desc = '';
+        valor = parseBRMoney(cols[1]);
+      }
     }
+
+    // Se ainda não temos tipo, tenta inferir pelos valores das outras células (D/C)
+    if(!tipo) tipo = inferTypeFromRow(cols);
+
     if(!desc) desc = 'Transação';
-    if(valor !== 0) out.push({data, desc, valor});
+    if(valor !== 0) out.push({data, desc, valor, tipo});
   }
   return out;
 }
@@ -394,33 +442,69 @@ function parseXLSX(arrayBuffer){
     const wb = XLSX.read(arrayBuffer, {type:'array', cellDates:true});
     const sheet = wb.Sheets[wb.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(sheet, {header:1, raw:false, dateNF:'dd/mm/yyyy'});
+    if(!rows.length) return [];
+
+    // Detecta cabeçalho na primeira linha que tem texto descritivo
+    let idxData=-1, idxDesc=-1, idxValor=-1, idxDeb=-1, idxCred=-1, idxTipo=-1;
+    let headerRow=-1;
+    for(let i=0;i<Math.min(5,rows.length);i++){
+      const r = rows[i] || [];
+      let scoreD=-1, scoreDes=-1, scoreV=-1;
+      r.forEach((c,j)=>{
+        const cl = String(c||'').toLowerCase();
+        if(/^data|^dt/.test(cl)) scoreD=j;
+        if(/descri|hist[oó]r|memo|t[ií]tulo/.test(cl)) scoreDes=j;
+        if(/^valor$|^amount|^vlr$/.test(cl)) scoreV=j;
+        if(/d[ée]bito/.test(cl)) idxDeb=j;
+        if(/cr[eé]dito/.test(cl)) idxCred=j;
+        if(/^tipo$|^d\/c$|^dc$|^natureza/.test(cl)) idxTipo=j;
+      });
+      if(scoreD>=0 || scoreDes>=0 || idxDeb>=0 || idxCred>=0){
+        idxData=scoreD; idxDesc=scoreDes; idxValor=scoreV; headerRow=i; break;
+      }
+    }
+
     const out=[];
-    let started=false;
-    for(const r of rows){
+    const startRow = headerRow>=0 ? headerRow+1 : 0;
+    for(let i=startRow;i<rows.length;i++){
+      const r = rows[i];
       if(!r || !r.length) continue;
-      // pula linha que parece header (sem números na maioria das colunas)
-      const hasNums = r.some(c => typeof c==='number' || /^-?\d+([.,]\d+)?$/.test(String(c||'').replace(/[R$\s]/g,'')));
-      if(!started && !hasNums) continue;
-      started=true;
-      // Heurística: data | descrição | valor (ou data | descrição | débito | crédito)
-      let data='', desc='', valor=0;
-      if(r.length>=3){
-        data = parseBRDate(String(r[0]||''));
-        if(r.length>=4){
-          // tenta col 2=débito col 3=crédito
-          const c1 = parseBRMoney(r[2]);
-          const c2 = parseBRMoney(r[3]);
-          if(c1 && !c2) valor = -Math.abs(c1);
-          else if(c2 && !c1) valor = Math.abs(c2);
-          else valor = parseBRMoney(r[r.length-1]);
-          desc = String(r[1]||'');
+      // Pula linhas que não têm número
+      const hasNums = r.some(c => typeof c==='number' || /\d/.test(String(c||'')));
+      if(!hasNums) continue;
+
+      let data='', desc='', valor=0, tipo=null;
+
+      if(headerRow>=0 && (idxData>=0 || idxDesc>=0 || idxDeb>=0 || idxCred>=0 || idxValor>=0)){
+        data = parseBRDate(String(r[idxData>=0?idxData:0]||''));
+        desc = String(r[idxDesc>=0?idxDesc:1]||'');
+        if(idxDeb>=0 && idxCred>=0){
+          const d = parseBRMoney(r[idxDeb]);
+          const c = parseBRMoney(r[idxCred]);
+          if(d>0){ valor = d; tipo='saida'; }
+          else if(c>0){ valor = c; tipo='entrada'; }
+        } else if(idxValor>=0){
+          valor = parseBRMoney(r[idxValor]);
         } else {
           valor = parseBRMoney(r[r.length-1]);
+        }
+        if(idxTipo>=0 && !tipo){
+          const t = String(r[idxTipo]||'').toLowerCase().trim();
+          if(t==='d' || t==='débito' || t==='debito' || t==='dr' || t==='-') tipo='saida';
+          else if(t==='c' || t==='crédito' || t==='credito' || t==='cr' || t==='+') tipo='entrada';
+        }
+      } else {
+        // Sem header — heurística genérica
+        if(r.length>=3){
+          data = parseBRDate(String(r[0]||''));
           desc = String(r[1]||'');
+          valor = parseBRMoney(r[r.length-1]);
         }
       }
+
+      if(!tipo) tipo = inferTypeFromRow(r);
       if(!desc) desc='Transação';
-      if(valor!==0) out.push({data, desc:desc.trim(), valor});
+      if(valor!==0) out.push({data, desc:desc.trim(), valor, tipo});
     }
     return out;
   }catch(e){ console.error(e); showToast('Erro lendo .xlsx'); return []; }
@@ -522,13 +606,46 @@ function trelloCardToTx(card){
 function classifyImport(items){
   const entradas=[], saidas=[];
   for(const it of items){
-    if(it.valor >= 0){
-      entradas.push({...it, cat: autoCat(it.desc, 'entrada')});
+    // Direção determinada na hora do parse (it.tipo='entrada'|'saida'|null)
+    // Fallback: sinal do valor + inferência por descrição
+    let tipo = it.tipo;
+    if(!tipo){
+      tipo = inferTypeFromDesc(it.desc);
+    }
+    if(!tipo){
+      tipo = (it.valor < 0) ? 'saida' : 'entrada';
+    }
+    const v = Math.abs(it.valor);
+    if(v === 0) continue;
+    if(tipo === 'entrada'){
+      entradas.push({...it, valor: v, cat: autoCat(it.desc, 'entrada')});
     } else {
-      saidas.push({...it, valor: Math.abs(it.valor), cat: autoCat(it.desc, 'saida')});
+      saidas.push({...it, valor: v, cat: autoCat(it.desc, 'saida')});
     }
   }
   return {entradas, saidas};
+}
+
+// Inferência de tipo (entrada/saida) baseada em palavras-chave da descrição
+const SAIDA_KW = ['pagamento','pago','débito','debito','compra','saque','transferência enviada','transferencia enviada','pix enviado','ted enviada','doc enviado','tarifa','iof','imposto','desconto','fatura','boleto pago','mensalidade','aluguel','conta de','condomínio','condominio','luz','energia','água','agua','gás','gas','internet','assinatura','netflix','spotify','disney','uber','99','ifood','mercado','farmácia','farmacia','posto','gasolina'];
+const ENTRADA_KW = ['recebido','recebimento','crédito','credito','salário','salario','depósito','deposito','pix recebido','transferência recebida','transferencia recebida','rendimento','dividendo','reembolso','estorno','devolução','devolucao','holerite','folha de pagamento','pagamento recebido'];
+
+function inferTypeFromDesc(desc){
+  if(!desc) return null;
+  const d = String(desc).toLowerCase();
+  for(const kw of SAIDA_KW) if(d.includes(kw)) return 'saida';
+  for(const kw of ENTRADA_KW) if(d.includes(kw)) return 'entrada';
+  return null;
+}
+
+// Inferência baseada em colunas auxiliares (Tipo, D/C, Débito/Crédito)
+function inferTypeFromRow(cells){
+  for(const v of cells){
+    const s = String(v||'').trim().toLowerCase();
+    if(s==='d' || s==='débito' || s==='debito' || s==='dr' || s==='-') return 'saida';
+    if(s==='c' || s==='crédito' || s==='credito' || s==='cr' || s==='+') return 'entrada';
+  }
+  return null;
 }
 
 function pickFile(){
@@ -1123,23 +1240,35 @@ function render(){
             render();
           }}})
         ),
-        prev ? h('div',{style:{background:'var(--card)',borderRadius:'12px',padding:'10px',marginTop:'10px',marginBottom:'10px',maxHeight:'260px',overflowY:'auto'}},
-          h('div',{style:{fontSize:'13px',fontWeight:'700',marginBottom:'8px'}},
-            '📋 ',(prev.entradas.length+prev.saidas.length)+' transações detectadas',
-            h('span',{style:{color:'#22c55e',marginLeft:'8px'}},'+'+prev.entradas.length+' entradas'),
-            h('span',{style:{color:'#ef4444',marginLeft:'6px'}},'-'+prev.saidas.length+' saídas')
+        prev ? h('div',{style:{background:'var(--card)',borderRadius:'12px',padding:'10px',marginTop:'10px',marginBottom:'10px',maxHeight:'320px',overflowY:'auto'}},
+          h('div',{style:{fontSize:'13px',fontWeight:'700',marginBottom:'4px'}},
+            '📋 ',(prev.entradas.length+prev.saidas.length)+' transações detectadas'
           ),
-          ...[...prev.entradas.slice(0,5).map(it=>h('div',{className:'prev-row'},
-            h('span',{className:'prev-tag in'},'+ '+fmt(it.valor)),
+          h('div',{style:{fontSize:'11px',color:'var(--text3)',marginBottom:'8px'}},
+            'Toque no botão ⇄ pra trocar entrada ↔ saída se o app errou.'
+          ),
+          h('div',{style:{display:'flex',gap:'8px',marginBottom:'8px',fontSize:'11px',fontWeight:'700'}},
+            h('span',{style:{color:'#22c55e'}},'+'+prev.entradas.length+' entradas · '+fmt(prev.entradas.reduce((s,e)=>s+e.valor,0))),
+            h('span',{style:{color:'#ef4444'}},'-'+prev.saidas.length+' saídas · '+fmt(prev.saidas.reduce((s,e)=>s+e.valor,0)))
+          ),
+          ...[...prev.entradas.map((it,idx)=>h('div',{className:'prev-row'},
+            h('button',{style:{flex:'none',background:'rgba(34,197,94,.2)',color:'#86efac',padding:'4px 8px',borderRadius:'6px',fontSize:'10px',fontWeight:'700',border:'none'},on:{click:()=>{
+              S.importPreview.saidas.push({...it});
+              S.importPreview.entradas.splice(idx,1);
+              render();
+            }}},'+ '+fmt(it.valor)+' ⇄'),
             h('span',{style:{flex:'1',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},it.desc),
             h('span',{className:'pill'},it.cat||'?')
           )),
-          ...prev.saidas.slice(0,5).map(it=>h('div',{className:'prev-row'},
-            h('span',{className:'prev-tag out'},'- '+fmt(it.valor)),
+          ...prev.saidas.map((it,idx)=>h('div',{className:'prev-row'},
+            h('button',{style:{flex:'none',background:'rgba(239,68,68,.2)',color:'#fca5a5',padding:'4px 8px',borderRadius:'6px',fontSize:'10px',fontWeight:'700',border:'none'},on:{click:()=>{
+              S.importPreview.entradas.push({...it});
+              S.importPreview.saidas.splice(idx,1);
+              render();
+            }}},'- '+fmt(it.valor)+' ⇄'),
             h('span',{style:{flex:'1',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},it.desc),
             h('span',{className:'pill'},it.cat||'?')
-          )),
-          (prev.entradas.length+prev.saidas.length>10)?h('div',{style:{fontSize:'11px',color:'var(--text3)',textAlign:'center',marginTop:'4px'}},'+'+((prev.entradas.length+prev.saidas.length)-10)+' mais...'):null
+          ))
           ]
         ) : h('div',{style:{fontSize:'11px',color:'var(--text3)',textAlign:'center',padding:'12px'}},'Selecione um arquivo pra ver o preview'),
         h('div',{className:'row'},
