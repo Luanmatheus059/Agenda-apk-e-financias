@@ -12,6 +12,8 @@
 <!-- pdf.js para .pdf (best-effort) -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>if(typeof pdfjsLib!=='undefined')pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
+<!-- Chart.js pra gráficos -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 :root{--bg:#052e16;--bg2:#14532d;--bg3:#166534;--card:#14532d;--card2:#1a5c38;--text:#f0fdf4;--text2:#86efac;--text3:#4ade80;--accent:#22c55e;--red:#ef4444;--orange:#f59e0b;--blue:#3b82f6;--purple:#a855f7;--border:#166534;--radius:14px}
@@ -82,6 +84,20 @@ button{font-family:inherit;cursor:pointer;border:none;outline:none;transition:al
 .prev-tag{font-size:9px;padding:2px 6px;border-radius:5px;font-weight:700}
 .prev-tag.in{background:rgba(34,197,94,.2);color:#86efac}
 .prev-tag.out{background:rgba(239,68,68,.2);color:#fca5a5}
+.market-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.market-card{background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:10px}
+.market-card .sym{font-size:11px;color:var(--text3);font-weight:700}
+.market-card .price{font-size:18px;font-weight:800;margin:2px 0}
+.market-card .chg{font-size:12px;font-weight:700}
+.market-card .chg.up{color:#22c55e}.market-card .chg.down{color:#ef4444}
+.news-item{padding:10px;border-radius:10px;background:var(--card2);border:1px solid var(--border);margin-bottom:8px}
+.news-item a{color:var(--text);text-decoration:none}
+.news-item .src{font-size:10px;color:var(--text3);margin-top:4px;font-weight:600}
+.alloc-bar{display:flex;height:30px;border-radius:8px;overflow:hidden;margin:8px 0}
+.alloc-seg{display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff}
+.chart-wrap{position:relative;height:240px;margin:8px 0}
+.chart-wrap.small{height:200px}
+.refresh-btn{padding:8px 14px;border-radius:10px;font-size:11px;font-weight:700;background:var(--bg);color:var(--text2);border:1px solid var(--border)}
 </style>
 </head>
 <body>
@@ -172,12 +188,151 @@ let S={
   trello: LS.get('trello',{key:'',token:'',boardId:''}),
   bankNotifs:[],
   bankPerm:false,
-  notifPerm:'default'
+  notifPerm:'default',
+  market: LS.get('market',{ts:0, indices:[], stocks:[], news:[]}),
+  marketLoading: false,
+  perfilInv: LS.get('perfilInv','moderado'), // conservador/moderado/agressivo
+  charts:{}
 };
 
 function save(){
-  ['ent','sai','aquisicao','aquisHist','invPct','inv','metas','sheetsURL','trello'].forEach(k=>LS.set(k,S[k]));
+  ['ent','sai','aquisicao','aquisHist','invPct','inv','metas','sheetsURL','trello','market','perfilInv'].forEach(k=>LS.set(k,S[k]));
   scheduleSmartReminders();
+}
+
+// ─── Mercado financeiro (Brapi.dev — API pública grátis) ───
+async function fetchMarket(force){
+  if(!force && S.market.ts && (Date.now()-S.market.ts) < 5*60_000) return; // cache 5min
+  S.marketLoading=true; render();
+  try{
+    const symbols = ['IBOV','PETR4','VALE3','ITUB4','BBDC4','MGLU3','BBAS3','ABEV3','WEGE3','B3SA3'];
+    const stocksRes = await fetch(`https://brapi.dev/api/quote/${symbols.join(',')}?range=1d`);
+    const stocksData = stocksRes.ok ? await stocksRes.json() : {results:[]};
+    // Dólar
+    let dolar=null;
+    try{
+      const cr = await fetch('https://brapi.dev/api/v2/currency?currency=USD-BRL');
+      if(cr.ok){
+        const cd = await cr.json();
+        const c = (cd.currency||[])[0];
+        if(c) dolar={symbol:'USD/BRL',name:'Dólar',price:c.bidPrice,chg:parseFloat(c.bidVariation)||0};
+      }
+    }catch(e){}
+    // Bitcoin
+    let btc=null;
+    try{
+      const br = await fetch('https://brapi.dev/api/v2/crypto?coin=BTC&currency=BRL');
+      if(br.ok){
+        const bd = await br.json();
+        const c = (bd.coins||[])[0];
+        if(c) btc={symbol:'BTC',name:'Bitcoin',price:c.regularMarketPrice,chg:c.regularMarketChangePercent||0};
+      }
+    }catch(e){}
+    const results = stocksData.results || [];
+    const ibov = results.find(r=>r.symbol==='IBOV');
+    const indices = [];
+    if(ibov) indices.push({symbol:'IBOV',name:'Ibovespa',price:ibov.regularMarketPrice,chg:ibov.regularMarketChangePercent||0});
+    if(dolar) indices.push(dolar);
+    if(btc) indices.push(btc);
+    const stocks = results.filter(r=>r.symbol!=='IBOV').map(r=>({
+      symbol:r.symbol,
+      name:r.shortName||r.longName||r.symbol,
+      price:r.regularMarketPrice,
+      chg:r.regularMarketChangePercent||0,
+      volume:r.regularMarketVolume
+    }));
+    // Notícias (Brapi não tem endpoint genérico de notícias estável; usamos news de tickers populares)
+    const news=[];
+    try{
+      const nr = await fetch('https://brapi.dev/api/v2/quote/PETR4?modules=news');
+      if(nr.ok){
+        const nd = await nr.json();
+        const arr = nd.news || (nd.results && nd.results[0] && nd.results[0].news) || [];
+        arr.slice(0,5).forEach(n=>news.push({
+          title:n.title,
+          source:n.source||n.publisher||'Notícia',
+          url:n.url||n.link||'#',
+          date:n.publishedAt||n.pubDate||''
+        }));
+      }
+    }catch(e){}
+    S.market = {ts:Date.now(), indices, stocks, news};
+    LS.set('market', S.market);
+    showToast('📊 Mercado atualizado');
+  }catch(e){
+    console.error('Brapi error',e);
+    showToast('Falha ao buscar mercado (sem internet?)');
+  }
+  S.marketLoading=false; render();
+}
+
+// ─── Recomendação de alocação 50/30/20 + perfil ───
+function getAllocationPlan(){
+  const tE=tot(S.ent), tS=tot(S.sai), saldo=tE-tS;
+  // Disponível mensal estimado
+  const disponivel = Math.max(0, saldo);
+  // % por perfil (renda fixa / variável / cripto / reserva)
+  const perfis = {
+    conservador: {fixa:60, variavel:20, cripto:0, reserva:20},
+    moderado:    {fixa:40, variavel:35, cripto:5,  reserva:20},
+    agressivo:   {fixa:20, variavel:50, cripto:15, reserva:15}
+  };
+  const p = perfis[S.perfilInv] || perfis.moderado;
+  // 50/30/20: 50% necessidades, 30% lazer, 20% investir
+  const idealInvestir = Math.round(tE * 0.20);
+  const idealNecessidades = Math.round(tE * 0.50);
+  const idealLazer = Math.round(tE * 0.30);
+  return {
+    disponivel,
+    perfil: S.perfilInv,
+    p,
+    idealInvestir,
+    idealNecessidades,
+    idealLazer,
+    realInvestir: tInv(),
+    breakdown: {
+      'Renda Fixa (Tesouro/CDB)': Math.round(idealInvestir * p.fixa/100),
+      'Renda Variável (Ações/FIIs)': Math.round(idealInvestir * p.variavel/100),
+      'Cripto (BTC/ETH)': Math.round(idealInvestir * p.cripto/100),
+      'Reserva Emergência': Math.round(idealInvestir * p.reserva/100)
+    }
+  };
+}
+function tInv(){return S.inv.reduce((s,v)=>s+(parseFloat(v.investido)||0),0)}
+
+// ─── Histórico de saldo (acumulado por dia) ───
+function getBalanceHistory(){
+  const allTx = [...S.ent.map(e=>({...e, sign:1})), ...S.sai.map(s=>({...s, sign:-1}))];
+  // ordena por data
+  allTx.sort((a,b)=>{
+    const da = parseDateBR(a.data), db = parseDateBR(b.data);
+    if(!da || !db) return (a.id||0) - (b.id||0);
+    return da - db;
+  });
+  let acc=0;
+  const points=[];
+  for(const tx of allTx){
+    const v = (parseFloat(tx.valor)||0) * tx.sign;
+    acc += v;
+    points.push({data: tx.data||'?', valor: acc});
+  }
+  return points;
+}
+function parseDateBR(s){
+  if(!s) return null;
+  const m = String(s).match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if(!m) return null;
+  return new Date(parseInt(m[3]), parseInt(m[2])-1, parseInt(m[1]));
+}
+
+// ─── Renderiza gráficos ───
+function renderChart(canvasId, type, data, options){
+  if(typeof Chart==='undefined') return;
+  const ctx = document.getElementById(canvasId);
+  if(!ctx) return;
+  // destrói gráfico anterior se existir
+  if(S.charts[canvasId]){ try{ S.charts[canvasId].destroy(); }catch(e){} }
+  S.charts[canvasId] = new Chart(ctx, {type, data, options});
 }
 
 function showToast(msg){
@@ -211,7 +366,7 @@ async function initNotif(){
   }
 }
 
-const NID={daily:3000, weekly:3100, lowBalance:3200, monthly:3300, savings:3400};
+const NID={daily:3000, weekly:3100, lowBalance:3200, monthly:3300, savings:3400, morning:3500, market:3600, budgetAlert:3700, investRem:3800};
 
 async function scheduleSmartReminders(){
   if(!isNative || !LocalNotifications || S.notifPerm!=='granted') return;
@@ -274,6 +429,58 @@ async function scheduleSmartReminders(){
       body:`Suas despesas superam as entradas em ${fmt(Math.abs(saldo))}. Revise os gastos.`,
       channelId:'financas-default',
       schedule:{ at: new Date(Date.now()+60_000) }
+    });
+  }
+
+  // ─── Resumo da manhã (7h) com saldo e dica ───
+  const planM = getAllocationPlan();
+  const morningBody = saldo>=0
+    ? `Saldo: ${fmt(saldo)}. Você pode investir ~${fmt(planM.idealInvestir/30)} hoje (média diária).`
+    : `Atenção: saldo negativo de ${fmt(Math.abs(saldo))}. Corte gastos hoje.`;
+  notifs.push({
+    id:NID.morning,
+    title:'☀️ Resumo financeiro de hoje',
+    body: morningBody,
+    channelId:'financas-default',
+    schedule:{ on:{ hour:7, minute:0 }, allowWhileIdle:true }
+  });
+
+  // ─── Lembrete pra olhar o mercado (dias úteis, 10h) ───
+  for(const wd of [3,4,5,6,7]){ // ter,qua,qui,sex,sab (capacitor 1=dom)
+    notifs.push({
+      id:NID.market+wd,
+      title:'📰 Mercado abriu',
+      body:'Confira Ibovespa, Dólar e Bitcoin do dia na aba 📰 Mercado.',
+      channelId:'financas-default',
+      schedule:{ on:{ weekday:wd, hour:10, minute:30 }, allowWhileIdle:true }
+    });
+  }
+
+  // ─── Alerta de orçamento por categoria ───
+  // Se alguma categoria está com >40% das saídas no mês
+  if(tS>0){
+    const porCat={};
+    for(const s of S.sai) porCat[s.cat||'Outros']=(porCat[s.cat||'Outros']||0)+(parseFloat(s.valor)||0);
+    const top = Object.entries(porCat).sort((a,b)=>b[1]-a[1])[0];
+    if(top && top[1] > tS*0.4){
+      notifs.push({
+        id:NID.budgetAlert,
+        title:'⚠️ Categoria com gasto alto',
+        body:`"${top[0]}" = ${pct(top[1],tS)}% das despesas (${fmt(top[1])}). Revise se está OK.`,
+        channelId:'financas-default',
+        schedule:{ at: new Date(Date.now()+5*60_000) }
+      });
+    }
+  }
+
+  // ─── Lembrete de investimento semanal (sex 18h) ───
+  if(saldo>0){
+    notifs.push({
+      id:NID.investRem,
+      title:'📈 Sexta-feira de investir',
+      body:`Você tem ${fmt(saldo)} em saldo. Que tal aplicar ${fmt(saldo*0.2)} (20%)?`,
+      channelId:'financas-default',
+      schedule:{ on:{ weekday:6, hour:18, minute:0 }, allowWhileIdle:true }
     });
   }
 
@@ -885,8 +1092,8 @@ function render(){
   ));
 
   const tabs=h('div',{className:'tabs'});
-  ['📊 Painel','💰 Entradas','💸 Saídas','🎯 Aquisição','📈 Investir','🏆 Metas','🔔 Bancos'+(pendentesBanco>0?' ('+pendentesBanco+')':'')].forEach((t,i)=>{
-    tabs.append(h('button',{className:'tab'+(S.tab===i?' on':''),on:{click:()=>{S.tab=i;render()}}},t));
+  ['📊 Painel','💰 Entradas','💸 Saídas','🎯 Aquisição','📈 Investir','🏆 Metas','📰 Mercado','🔔 Bancos'+(pendentesBanco>0?' ('+pendentesBanco+')':'')].forEach((t,i)=>{
+    tabs.append(h('button',{className:'tab'+(S.tab===i?' on':''),on:{click:()=>{S.tab=i;if(i===6)fetchMarket();render()}}},t));
   });
   app.append(tabs);
   const ct=h('div',{className:'ct'});app.append(ct);
@@ -930,12 +1137,58 @@ function render(){
         h('div',{style:{fontSize:'12px',color:'var(--text3)',marginTop:'4px'}},'Falta: ',h('strong',{style:{color:'#ef4444'}},fmt(Math.max(0,aq.valor-aqAcum))))
       ));
     }
+    // ─── Plano de alocação 50/30/20 + perfil ───
+    const plan = getAllocationPlan();
+    const allocCard = h('div',{className:'card',style:{border:'1px solid #a855f7'}},
+      h('h3',{style:{color:'#a855f7'}},'🧠 Plano de Investimento'),
+      h('div',{style:{fontSize:'11px',color:'var(--text3)',marginBottom:'8px'}},'Perfil de risco:'),
+      h('div',{style:{display:'flex',gap:'4px',marginBottom:'12px'}},
+        ...['conservador','moderado','agressivo'].map(p=>
+          h('button',{style:{flex:'1',padding:'6px',borderRadius:'8px',fontSize:'10px',fontWeight:'700',
+            background:S.perfilInv===p?'#a855f7':'var(--bg2)',
+            color:S.perfilInv===p?'#fff':'var(--text3)',
+            border:'1px solid '+(S.perfilInv===p?'#a855f7':'var(--border)')},
+            on:{click:()=>{S.perfilInv=p;save();render()}}}, p)
+        )
+      ),
+      h('div',{style:{fontSize:'12px',color:'var(--text2)',marginBottom:'6px'}},'Regra 50/30/20 sobre suas receitas (', fmt(tE), '):'),
+      h('div',{className:'alloc-bar'},
+        h('div',{className:'alloc-seg',style:{flex:'50',background:'#ef4444'}},'50% essencial'),
+        h('div',{className:'alloc-seg',style:{flex:'30',background:'#f59e0b'}},'30% lazer'),
+        h('div',{className:'alloc-seg',style:{flex:'20',background:'#22c55e'}},'20% inv')
+      ),
+      h('div',{style:{fontSize:'11px',color:'var(--text3)',marginBottom:'10px',display:'flex',gap:'10px'}},
+        h('span',null,'Essencial: ',h('b',{style:{color:'#ef4444'}},fmt(plan.idealNecessidades))),
+        h('span',null,'Lazer: ',h('b',{style:{color:'#f59e0b'}},fmt(plan.idealLazer))),
+        h('span',null,'Investir: ',h('b',{style:{color:'#22c55e'}},fmt(plan.idealInvestir)))
+      ),
+      h('div',{style:{fontSize:'12px',color:'var(--text2)',margin:'10px 0 6px'}},'Como dividir o investimento (perfil ', h('b',null,S.perfilInv), '):'),
+      ...Object.entries(plan.breakdown).map(([nome,val])=>
+        h('div',{style:{display:'flex',justifyContent:'space-between',fontSize:'12px',padding:'6px 0',borderBottom:'1px solid var(--border)'}},
+          h('span',null,nome),
+          h('span',{style:{fontWeight:'800',color:'#a855f7'}},fmt(val))
+        )
+      ),
+      h('div',{style:{marginTop:'10px',padding:'8px',background:'var(--bg)',borderRadius:'8px',fontSize:'11px',color:'var(--text2)'}},
+        '💡 Já investiu este ano: ',h('b',{style:{color:'#a855f7'}},fmt(plan.realInvestir)),
+        ' — meta sugerida: ',h('b',{style:{color:'#22c55e'}},fmt(plan.idealInvestir*12))
+      )
+    );
+    ct.append(allocCard);
+
+    // ─── Gráfico de balanço ao longo do tempo ───
     ct.append(h('div',{className:'card'},
-      h('h3',{style:{color:'#a855f7'}},'📈 Investido no Ano'),
-      h('div',{style:{fontSize:'22px',fontWeight:'800',color:'#a855f7'}},fmt(tInv))
+      h('h3',null,'📈 Evolução do Saldo'),
+      h('div',{className:'chart-wrap'}, h('canvas',{id:'chart-balance'}))
     ));
+
+    // ─── Gráfico de pizza categorias ───
     if(S.sai.length>0){
-      const cc=h('div',{className:'card'},h('h3',null,'📋 Gastos por Categoria'));
+      ct.append(h('div',{className:'card'},
+        h('h3',null,'🥧 Gastos por Categoria'),
+        h('div',{className:'chart-wrap small'}, h('canvas',{id:'chart-categorias'}))
+      ));
+      const cc=h('div',{className:'card'},h('h3',null,'📋 Detalhe por Categoria'));
       CATS_S.forEach(cat=>{
         const t=S.sai.filter(s=>s.cat===cat).reduce((s,e)=>s+(parseFloat(e.valor)||0),0);
         if(t===0)return;
@@ -946,6 +1199,45 @@ function render(){
       });
       ct.append(cc);
     }
+
+    // Renderiza gráficos depois que o DOM estiver pronto
+    setTimeout(()=>{
+      const hist = getBalanceHistory();
+      if(hist.length){
+        renderChart('chart-balance','line',{
+          labels: hist.map(p=>p.data),
+          datasets:[{
+            label:'Saldo acumulado',
+            data: hist.map(p=>p.valor),
+            borderColor:'#22c55e',
+            backgroundColor:'rgba(34,197,94,0.15)',
+            tension:0.25,
+            fill:true,
+            pointRadius:2
+          }]
+        },{
+          responsive:true, maintainAspectRatio:false,
+          plugins:{legend:{display:false}},
+          scales:{
+            x:{ticks:{color:'#86efac',font:{size:9},maxRotation:0,autoSkipPadding:20}},
+            y:{ticks:{color:'#86efac',font:{size:10},callback:v=>'R$'+v}}
+          }
+        });
+      }
+      if(S.sai.length>0){
+        const catTotals = {};
+        for(const s of S.sai) catTotals[s.cat||'Outros']=(catTotals[s.cat||'Outros']||0)+(parseFloat(s.valor)||0);
+        const labels=Object.keys(catTotals);
+        const values=Object.values(catTotals);
+        const colors=['#ef4444','#f59e0b','#22c55e','#3b82f6','#a855f7','#14b8a6','#ec4899','#f97316','#eab308','#06b6d4','#8b5cf6'];
+        renderChart('chart-categorias','doughnut',{
+          labels, datasets:[{data:values, backgroundColor:colors.slice(0,labels.length), borderWidth:1, borderColor:'#052e16'}]
+        },{
+          responsive:true, maintainAspectRatio:false,
+          plugins:{legend:{position:'bottom',labels:{color:'#86efac',font:{size:10},padding:6,boxWidth:10}}}
+        });
+      }
+    }, 30);
   }
 
   // ═══ ENTRADAS ═══
@@ -1129,8 +1421,69 @@ function render(){
     });
   }
 
-  // ═══ BANCOS ═══
+  // ═══ MERCADO (NOVA) ═══
   if(S.tab===6){
+    ct.append(h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'10px'}},
+      h('h3',{style:{fontSize:'16px'}},'📰 Mercado em tempo real'),
+      h('button',{className:'refresh-btn',on:{click:()=>fetchMarket(true)}},S.marketLoading?'⏳ Buscando...':'🔄 Atualizar')
+    ));
+    ct.append(h('div',{style:{fontSize:'10px',color:'var(--text3)',marginBottom:'10px',lineHeight:'1.5'}},
+      'Dados via Brapi.dev (gratuito). Atualizado: ',
+      S.market.ts ? new Date(S.market.ts).toLocaleTimeString('pt-BR') : 'nunca',
+      '. ⚠️ XP/investing.com exigem API paga — não acessíveis publicamente.'
+    ));
+    if(!S.market.indices.length && !S.market.stocks.length){
+      ct.append(h('div',{className:'card empty'},'Toque em "Atualizar" pra buscar dados do mercado.'));
+    } else {
+      // Índices
+      if(S.market.indices.length){
+        const card=h('div',{className:'card'},h('h3',null,'🌎 Índices & Câmbio'));
+        const grid=h('div',{className:'market-grid'});
+        S.market.indices.forEach(i=>{
+          grid.append(h('div',{className:'market-card'},
+            h('div',{className:'sym'},i.name+' ('+i.symbol+')'),
+            h('div',{className:'price'},(i.symbol==='BTC'?'R$ ':'')+(i.price||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})),
+            h('div',{className:'chg '+(i.chg>=0?'up':'down')},(i.chg>=0?'▲ +':'▼ ')+(i.chg||0).toFixed(2)+'%')
+          ));
+        });
+        card.append(grid);
+        ct.append(card);
+      }
+      // Ações
+      if(S.market.stocks.length){
+        const card=h('div',{className:'card'},h('h3',null,'📈 Top Ações BR'));
+        S.market.stocks.forEach(s=>{
+          card.append(h('div',{style:{display:'flex',padding:'8px',borderRadius:'10px',background:'var(--card2)',marginBottom:'6px',alignItems:'center',gap:'10px'}},
+            h('div',{style:{flex:'1'}},
+              h('div',{style:{fontWeight:'700',fontSize:'13px'}},s.symbol),
+              h('div',{style:{fontSize:'10px',color:'var(--text3)'}},(s.name||'').slice(0,30))
+            ),
+            h('div',{style:{textAlign:'right'}},
+              h('div',{style:{fontWeight:'800',fontSize:'14px'}},'R$ '+(s.price||0).toFixed(2)),
+              h('div',{style:{fontSize:'11px',fontWeight:'700',color:s.chg>=0?'#22c55e':'#ef4444'}},(s.chg>=0?'▲ +':'▼ ')+(s.chg||0).toFixed(2)+'%')
+            )
+          ));
+        });
+        ct.append(card);
+      }
+      // Notícias
+      if(S.market.news.length){
+        const card=h('div',{className:'card'},h('h3',null,'🗞️ Últimas notícias'));
+        S.market.news.forEach(n=>{
+          card.append(h('div',{className:'news-item'},
+            h('a',{href:n.url,target:'_blank',rel:'noopener'},
+              h('div',{style:{fontWeight:'600',fontSize:'13px',lineHeight:'1.4'}},n.title)
+            ),
+            h('div',{className:'src'},n.source+(n.date?' · '+n.date.slice(0,10):''))
+          ));
+        });
+        ct.append(card);
+      }
+    }
+  }
+
+  // ═══ BANCOS ═══
+  if(S.tab===7){
     if(!isNative){
       ct.append(h('div',{className:'banner warn'},
         'Esta tela só funciona no APK Android. No navegador / iOS PWA não dá pra ler notificações dos apps de banco.'));
