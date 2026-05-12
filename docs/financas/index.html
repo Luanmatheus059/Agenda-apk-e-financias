@@ -4920,22 +4920,36 @@ await initNotif();
 render();
 await scheduleSmartReminders();
 
-// ─── BOOT 100% AUTOMÁTICO ───
+// ─── BOOT 100% AUTOMÁTICO COM AUTO-RETRY ───
 // Roda em paralelo: mercado + notícias + análise IA + agendamento
-// Tudo sem precisar tocar em nenhum botão
+// Auto-retry a cada 30s se algo falhou — usuario NUNCA precisa apertar refresh
 (async()=>{
   console.log('🚀 Boot automático iniciando...');
-  // 1. Mercado em paralelo
-  fetchMarket(true).then(()=>{
-    console.log('  ✅ Mercado carregado');
-    render(); // re-render com snapshot fresco
-  }).catch(e=>console.warn('  ❌ Mercado:',e.message));
 
-  // 2. Notícias em paralelo
-  fetchAllNews().then(()=>{
-    console.log('  ✅ Notícias carregadas:',S.news.length);
-    render();
-  }).catch(e=>console.warn('  ❌ Notícias:',e.message));
+  // Função que tenta carregar com retry automático
+  const autoRetry = async (name, fn, isOK)=>{
+    let attempts = 0;
+    const maxAttempts = 10; // ~5 min de retry
+    while(attempts < maxAttempts){
+      try{
+        await fn();
+        if(isOK()){
+          console.log(`  ✅ ${name} carregado`);
+          render();
+          return;
+        }
+      }catch(e){console.warn(`  ⏳ ${name} tentativa ${attempts+1}:`,e.message)}
+      attempts++;
+      // Backoff: 3s, 6s, 12s, 30s, 30s, 30s...
+      const wait = Math.min(30000, 3000 * Math.pow(2, attempts-1));
+      await new Promise(r=>setTimeout(r, wait));
+    }
+    console.warn(`  ❌ ${name} desistiu após ${maxAttempts} tentativas`);
+  };
+
+  // Dispara mercado e notícias em paralelo com auto-retry
+  autoRetry('Mercado', ()=>fetchMarket(true), ()=>(S.market.indices||[]).length > 0);
+  autoRetry('Notícias', ()=>fetchAllNews(), ()=>(S.news||[]).length > 0);
 
   // 3. Agendamento (espera mercado)
   setTimeout(async ()=>{
