@@ -128,3 +128,4 @@ jobs:
           print('Enviado:' if ok else 'FALHOU:', now.isoformat())
           PY
 # trigger: 2026-05-12T14:58:42Z
+# trigger: 2026-05-12T15:43:23Z

@@ -144,3 +144,4 @@ jobs:
               else:
                   print('Fora pregão sem setups - skip')
           PY
+# trigger: 2026-05-12T15:43:23Z
