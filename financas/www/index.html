@@ -2668,24 +2668,7 @@ async function requestBankPerm(){
   await BancoNotif.openPermissionSettings();
   showToast('Habilite "Minhas Finanças" na lista');
 }
-function importBankAsEntrada(it){
-  const cat = autoCat(it.titulo||it.texto, 'entrada');
-  S.ent.push({desc:it.titulo||it.banco,data:it.data,cat,valor:String(it.valor),obs:'Banco: '+it.banco,id:++uid});
-  BancoNotif && BancoNotif.markResolved({id:it.id});
-  save();refreshBankNotifs();
-  showToast('Entrada lançada ✅');
-}
-function importBankAsSaida(it){
-  const cat = autoCat(it.titulo||it.texto, 'saida');
-  S.sai.push({desc:it.titulo||it.banco,data:it.data,cat,valor:String(it.valor),forma:'',status:'Pago',obs:'Banco: '+it.banco,id:++uid});
-  BancoNotif && BancoNotif.markResolved({id:it.id});
-  save();refreshBankNotifs();
-  showToast('Saída lançada ✅');
-}
-function dismissBank(it){
-  BancoNotif && BancoNotif.markResolved({id:it.id});
-  refreshBankNotifs();
-}
+// Funções de importação bancária removidas — aba Bancos foi tirada do app
 
 // ─── Parsers de extrato ───
 function parseBRDate(s){
@@ -3386,7 +3369,7 @@ function _renderInternal(){
     h('div',{className:'hdr-row'},
       h('div',{style:{flex:'1',minWidth:'0'}},
         h('div',{className:'hdr-greet'},greeting+', '+userName),
-        h('h1',null,'Minhas Finanças'),
+        h('h1',null,'Minhas Finanças',h('span',{style:{fontSize:'11px',color:'#22c55e',marginLeft:'8px',fontWeight:'700',verticalAlign:'middle'}},'v56')),
         h('div',{style:{display:'flex',alignItems:'center',gap:'8px',marginTop:'6px',flexWrap:'wrap'}},
           h('span',{style:{fontSize:'10px',color:'var(--text3)',fontWeight:'700',letterSpacing:'.5px',textTransform:'uppercase'}},monthName),
           h('span',{style:{fontSize:'10px',fontWeight:'800',color:_mercadoAberto?'var(--green)':'var(--text3)',padding:'3px 9px',borderRadius:'6px',background:'rgba(0,0,0,.4)',border:'1px solid var(--border)',letterSpacing:'.3px'}},_statusLabel)
