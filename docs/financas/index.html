@@ -3370,7 +3370,7 @@ function _renderInternal(){
   const aq=S.aquisicao;
   const aqAcum=aq.mensal.reduce((s,v)=>s+(parseFloat(v)||0),0);
   const tInvVal=S.inv.reduce((s,v)=>s+(parseFloat(v.investido)||0),0);
-  const pendentesBanco = S.bankNotifs.filter(n=>!n.resolvido).length;
+  const pendentesBanco = 0; // aba Bancos removida
 
   // Status do mercado B3 (10h-18h dias úteis)
   const _agora = new Date();
@@ -3462,7 +3462,7 @@ function _renderInternal(){
   const _prevTabsScroll = (document.querySelector('.tabs')?.scrollLeft) || 0;
 
   const tabs=h('div',{className:'tabs'});
-  ['📊 Painel','💰 Entradas','💸 Saídas','🎯 Aquisição','📈 Investir','🏆 Metas','📰 Mercado','📰 Notícias','🤖 Agente','💬 Chat IA','📚 Estudos','🔔 Bancos'+(pendentesBanco>0?' ('+pendentesBanco+')':'')].forEach((t,i)=>{
+  ['📊 Painel','💰 Entradas','💸 Saídas','🎯 Aquisição','📈 Investir','🏆 Metas','📰 Mercado','📰 Notícias','🤖 Agente','💬 Chat IA','📚 Estudos'].forEach((t,i)=>{
     tabs.append(h('button',{className:'tab'+(S.tab===i?' on':''),on:{click:()=>{
       S.tab=i;
       if(i===6){fetchMarket();startAutoRefresh()}
@@ -4583,61 +4583,6 @@ function _renderInternal(){
   // ═══ ESTUDOS (tab 10) ═══
   if(S.tab===10){ renderEstudosTab(ct); }
 
-  // ═══ BANCOS (tab 11) ═══
-  if(S.tab===11){
-    if(!isNative){
-      ct.append(h('div',{className:'banner warn'},
-        'Esta tela só funciona no APK Android. No navegador / iOS PWA não dá pra ler notificações dos apps de banco.'));
-    } else if(!BancoNotif){
-      ct.append(h('div',{className:'banner warn'},'Plugin de notificações dos bancos não está disponível.'));
-    } else {
-      ct.append(h('div',{className:'card'},
-        h('h3',null,'🔔 Captura automática de movimentações'),
-        h('p',{style:{fontSize:'12px',color:'var(--text3)',marginBottom:'10px'}},
-          'O app lê as notificações de PIX, compras e transferências que seus apps de banco (Nubank, Itaú, Bradesco, Santander, Inter, BB, C6, Caixa, Mercado Pago, etc.) disparam.'
-        ),
-        S.bankPerm
-          ? h('div',{className:'banner ok'},'✅ Permissão concedida.')
-          : h('div',null,
-              h('div',{className:'banner warn'},'⚠️ Habilite o acesso à notificação. Toque em "Abrir Configurações", encontre "Minhas Finanças" e ative.'),
-              h('button',{className:'btn btn-o',style:{width:'100%',padding:'12px'},on:{click:requestBankPerm}},'Abrir Configurações de Notificação')
-            ),
-        h('div',{style:{fontSize:'10px',color:'var(--text3)',marginTop:'10px',textAlign:'center',fontStyle:'italic'}},
-          S.bankLoading?'⏳ Atualizando...':'✓ Captura automática — sem precisar fazer nada'
-        )
-      ));
-
-      const pend = S.bankNotifs;
-      if(!pend.length){
-        ct.append(h('div',{className:'card empty'},'Nenhuma movimentação capturada ainda.'));
-      } else {
-        pend.slice().reverse().forEach(n=>{
-          ct.append(h('div',{className:'bank-item '+(n.tipo==='entrada'?'entrada':'saida')},
-            h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'4px'}},
-              h('div',{style:{flex:'1',minWidth:'0'}},
-                h('span',{className:'pill'},n.banco||'Banco'),' ',
-                h('span',{className:'pill',style:{background:n.tipo==='entrada'?'rgba(34,197,94,.2)':'rgba(239,68,68,.2)',color:n.tipo==='entrada'?'#86efac':'#fca5a5'}},n.tipo==='entrada'?'↓ Entrada':'↑ Saída')
-              ),
-              h('div',{style:{fontSize:'17px',fontWeight:'800',color:n.tipo==='entrada'?'#22c55e':'#ef4444',whiteSpace:'nowrap',marginLeft:'8px'}},fmt(n.valor))
-            ),
-            h('div',{style:{fontSize:'13px',fontWeight:'600',marginTop:'6px'}},n.titulo||'(sem título)'),
-            h('div',{style:{fontSize:'11px',color:'var(--text3)',marginTop:'2px'}},n.texto||''),
-            h('div',{className:'bank-actions'},
-              h('button',{className:'btn-g',on:{click:()=>importBankAsEntrada(n)}},'↓ Entrada'),
-              h('button',{className:'btn-r',on:{click:()=>importBankAsSaida(n)}},'↑ Saída'),
-              h('button',{style:{flex:'none',width:'40px',background:'var(--bg2)',color:'var(--text3)',border:'1px solid var(--border)'},on:{click:()=>dismissBank(n)}},'✕')
-            )
-          ));
-        });
-        ct.append(h('button',{className:'btn-add',style:{marginTop:'8px',color:'var(--red)',borderColor:'rgba(239,68,68,.3)'},on:{click:async()=>{
-          if(confirm('Limpar todas as notificações capturadas?')){
-            await BancoNotif.clearAll();
-            refreshBankNotifs();
-          }
-        }}},'Limpar tudo'));
-      }
-    }
-  }
 
   // ═══ MODAIS ═══
   function renderModal(type,fields,onSave){
@@ -4993,13 +4938,7 @@ if(isNative && LocalNotifications){
   }catch(e){}
 }
 
-if(isNative && BancoNotif){
-  // Roda em background sem await — não bloqueia init do app
-  refreshBankNotifs().catch(e=>console.warn('init bank:',e));
-  try{
-    BancoNotif.addListener && BancoNotif.addListener('newBankNotif', refreshBankNotifs);
-  }catch(e){}
-}
+// BancoNotif desativado — aba Bancos removida porque travava o app
 
 if(!isNative && 'serviceWorker' in navigator){
   const sw=`self.addEventListener('install',e=>self.skipWaiting());self.addEventListener('activate',e=>clients.claim());self.addEventListener('fetch',e=>e.respondWith(fetch(e.request).catch(()=>new Response('Offline'))));`;
