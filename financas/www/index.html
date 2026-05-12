@@ -336,6 +336,10 @@ let S={
   simQtde: LS.get('simQtde','100'),
   simAporte: LS.get('simAporte','0'),
   dividendTarget: LS.get('dividendTarget',''),
+  chatMsgs: LS.get('chatMsgs',[]),
+  estudosSub: 'basico',
+  userName: LS.get('userName','Luan'),
+  userAvatar: LS.get('userAvatar',''),
   news: LS.get('news',[]),
   newsLoading: false,
   newsLastTs: LS.get('newsLastTs',0),
@@ -355,7 +359,7 @@ let S={
 };
 
 function save(){
-  ['ent','sai','aquisicao','aquisHist','invPct','inv','metas','sheetsURL','trello','market','perfilInv','watchlist','alerts','diary','deepseekKey','aiAnalysis','news','newsLastTs','newsCategory','invSelected','simQtde','simAporte','dividendTarget'].forEach(k=>LS.set(k,S[k]));
+  ['ent','sai','aquisicao','aquisHist','invPct','inv','metas','sheetsURL','trello','market','perfilInv','watchlist','alerts','diary','deepseekKey','aiAnalysis','news','newsLastTs','newsCategory','invSelected','simQtde','simAporte','dividendTarget','chatMsgs','userName','userAvatar'].forEach(k=>LS.set(k,S[k]));
   scheduleSmartReminders();
 }
 
@@ -1449,6 +1453,7 @@ function renderInvestirTab(ct){
   const sub = S.invSub || 'visao';
   const subs = [
     {k:'visao',l:'🎯 Visão'},
+    {k:'carteira',l:'💼 Carteira'},
     {k:'acoes',l:'📈 Ações DY'},
     {k:'fii',l:'🏢 FIIs'},
     {k:'fiagro',l:'🌾 FIAGROs'},
@@ -1542,6 +1547,164 @@ function renderInvestirTab(ct){
         h('button',{className:'btn btn-g',style:{fontSize:'12px'},on:{click:()=>{S.invSub='acoes';render()}}},'📈 Ver Ações DY'),
         h('button',{className:'btn btn-purple',style:{fontSize:'12px'},on:{click:()=>{S.invSub='fii';render()}}},'🏢 Ver FIIs'),
         h('button',{className:'btn btn-o',style:{fontSize:'12px'},on:{click:()=>{S.invSub='fiagro';render()}}},'🌾 FIAGROs')
+      )
+    ));
+  }
+
+  // ═══ CARTEIRA GERADA ═══
+  if(sub==='carteira'){
+    const tE=tot(S.ent), tS=tot(S.sai), saldo=tE-tS;
+    const valorTotal = parseFloat(S.carteiraTotal||saldo) || saldo;
+
+    // Definição da carteira baseada no perfil
+    let aloc;
+    if(S.perfilInv==='conservador'){
+      aloc = {
+        RF: {pct:80, items:[
+          {nome:'Tesouro Selic 2029',tipo:'Tesouro',ticker:'LFT'},
+          {nome:'CDB liquidez diária 110% CDI',tipo:'CDB',ticker:'CDB-110'}
+        ]},
+        FII: {pct:10, items:[
+          {nome:'MXRF11',tipo:'FII Recebíveis',ticker:'MXRF11'},
+          {nome:'KNRI11',tipo:'FII Híbrido',ticker:'KNRI11'}
+        ]},
+        Acoes: {pct:7, items:[
+          {nome:'ITSA4',tipo:'Itaúsa',ticker:'ITSA4'},
+          {nome:'BBSE3',tipo:'BB Seguridade',ticker:'BBSE3'}
+        ]},
+        Cripto: {pct:3, items:[
+          {nome:'BTC (Bitcoin)',tipo:'Cripto',ticker:'BTC'}
+        ]}
+      };
+    } else if(S.perfilInv==='agressivo'){
+      aloc = {
+        RF: {pct:20, items:[
+          {nome:'Tesouro IPCA+ 2035',tipo:'Tesouro',ticker:'NTNB'}
+        ]},
+        FII: {pct:20, items:[
+          {nome:'VGIA11 (FIAGRO 14% DY)',tipo:'FIAGRO',ticker:'VGIA11'},
+          {nome:'HGLG11',tipo:'FII Logístico',ticker:'HGLG11'}
+        ]},
+        Acoes: {pct:40, items:[
+          {nome:'PETR4 (DY 12%)',tipo:'Petróleo',ticker:'PETR4'},
+          {nome:'BBAS3',tipo:'Banco do Brasil',ticker:'BBAS3'},
+          {nome:'VALE3',tipo:'Mineração',ticker:'VALE3'},
+          {nome:'TAEE11',tipo:'Energia',ticker:'TAEE11'}
+        ]},
+        Cripto: {pct:20, items:[
+          {nome:'BTC (Bitcoin)',tipo:'Cripto',ticker:'BTC'},
+          {nome:'ETH (Ethereum)',tipo:'Cripto',ticker:'ETH'}
+        ]}
+      };
+    } else {
+      aloc = {
+        RF: {pct:50, items:[
+          {nome:'Tesouro Selic 2029',tipo:'Tesouro',ticker:'LFT'},
+          {nome:'CDB 120% CDI 2 anos',tipo:'CDB',ticker:'CDB-120'}
+        ]},
+        FII: {pct:20, items:[
+          {nome:'HGLG11',tipo:'FII Logístico',ticker:'HGLG11'},
+          {nome:'MXRF11',tipo:'FII Recebíveis',ticker:'MXRF11'},
+          {nome:'KNRI11',tipo:'FII Híbrido',ticker:'KNRI11'}
+        ]},
+        Acoes: {pct:25, items:[
+          {nome:'ITSA4',tipo:'Itaúsa',ticker:'ITSA4'},
+          {nome:'BBAS3',tipo:'Banco do Brasil',ticker:'BBAS3'},
+          {nome:'TAEE11',tipo:'Energia',ticker:'TAEE11'}
+        ]},
+        Cripto: {pct:5, items:[
+          {nome:'BTC (Bitcoin)',tipo:'Cripto',ticker:'BTC'}
+        ]}
+      };
+    }
+
+    ct.append(h('div',{className:'card',style:{background:'linear-gradient(135deg,#7c3aed 0%,#5b21b6 100%)',border:'none',color:'#fff',padding:'18px'}},
+      h('div',{style:{fontSize:'11px',opacity:'.85',letterSpacing:'2px',fontWeight:'700'}},'CARTEIRA GERADA PRO SEU PERFIL'),
+      h('div',{style:{fontSize:'24px',fontWeight:'900',marginTop:'6px'}},(S.perfilInv||'moderado').toUpperCase()),
+      h('div',{style:{fontSize:'12px',opacity:'.85'}},'Ajuste o valor abaixo. Carteira gerada automaticamente.')
+    ));
+
+    ct.append(h('div',{className:'card'},
+      h('label',{style:{fontSize:'11px',color:'var(--text3)',fontWeight:'800',marginBottom:'6px',display:'block',letterSpacing:'.5px'}},'QUANTO QUER INVESTIR (R$)'),
+      h('input',{type:'number',value:String(valorTotal),placeholder:fmt(saldo),style:{fontSize:'20px',fontWeight:'800',padding:'14px'},
+        on:{change:e=>{S.carteiraTotal=e.target.value;save();render()}}}),
+      h('div',{style:{fontSize:'11px',color:'var(--text3)',marginTop:'6px'}},'💡 Sugestão: ',fmt(saldo>0?saldo*0.5:5000),' (50% do seu saldo positivo)')
+    ));
+
+    // Alocação visual
+    ct.append(h('div',{className:'card'},
+      h('h3',{style:{margin:'0 0 10px'}},'📊 Alocação Sugerida'),
+      h('div',{className:'alloc-bar'},
+        h('div',{className:'alloc-seg',style:{flex:aloc.RF.pct,background:'#22c55e'}},aloc.RF.pct+'%'),
+        h('div',{className:'alloc-seg',style:{flex:aloc.FII.pct,background:'#3b82f6'}},aloc.FII.pct+'%'),
+        h('div',{className:'alloc-seg',style:{flex:aloc.Acoes.pct,background:'#a855f7'}},aloc.Acoes.pct+'%'),
+        h('div',{className:'alloc-seg',style:{flex:aloc.Cripto.pct,background:'#f59e0b'}},aloc.Cripto.pct+'%')
+      ),
+      h('div',{style:{display:'flex',gap:'8px',fontSize:'10px',marginTop:'6px',flexWrap:'wrap'}},
+        h('span',{style:{color:'#22c55e',fontWeight:'700'}},'■ RF'),
+        h('span',{style:{color:'#3b82f6',fontWeight:'700'}},'■ FIIs'),
+        h('span',{style:{color:'#a855f7',fontWeight:'700'}},'■ Ações'),
+        h('span',{style:{color:'#f59e0b',fontWeight:'700'}},'■ Cripto')
+      )
+    ));
+
+    // Lista de ativos detalhada
+    const renderClasse = (key,label,color,a)=>{
+      const valorClasse = valorTotal * a.pct / 100;
+      const valorItem = valorClasse / a.items.length;
+      return h('div',{className:'card',style:{border:'1px solid '+color+'33'}},
+        h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:'10px'}},
+          h('div',null,
+            h('h3',{style:{margin:0,color}},label),
+            h('div',{style:{fontSize:'10px',color:'var(--text3)',fontWeight:'700'}},a.pct+'% da carteira · '+a.items.length+' ativo(s)')
+          ),
+          h('div',{style:{textAlign:'right'}},
+            h('div',{style:{fontSize:'18px',fontWeight:'900',color}},fmt(valorClasse))
+          )
+        ),
+        ...a.items.map(it=>h('div',{style:{padding:'10px',background:'rgba(0,0,0,.25)',borderRadius:'10px',marginBottom:'6px',display:'flex',alignItems:'center',gap:'10px'}},
+          h('div',{style:{width:'42px',height:'42px',borderRadius:'10px',background:color,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:'900',color:'#000',fontSize:'10px'}},it.ticker.slice(0,4)),
+          h('div',{style:{flex:'1'}},
+            h('div',{style:{fontSize:'13px',fontWeight:'800'}},it.nome),
+            h('div',{style:{fontSize:'10px',color:'var(--text3)'}},it.tipo)
+          ),
+          h('div',{style:{textAlign:'right'}},
+            h('div',{style:{fontSize:'14px',fontWeight:'900',color}},fmt(valorItem))
+          )
+        ))
+      );
+    };
+    ct.append(renderClasse('RF','🏦 Renda Fixa','#22c55e',aloc.RF));
+    ct.append(renderClasse('FII','🏢 Fundos Imobiliários','#3b82f6',aloc.FII));
+    ct.append(renderClasse('Acoes','📈 Ações','#a855f7',aloc.Acoes));
+    ct.append(renderClasse('Cripto','₿ Criptomoedas','#f59e0b',aloc.Cripto));
+
+    // Exportar CSV pra corretoras
+    ct.append(h('div',{className:'card'},
+      h('h3',{style:{margin:'0 0 10px',color:'#d4af37'}},'📤 Exportar pra sua corretora'),
+      h('p',{style:{fontSize:'12px',color:'var(--text2)',marginBottom:'10px'}},
+        'Baixe o plano em CSV pra usar em XP, Rico, Toro, Clear, BTG Pactual ou qualquer corretora.'),
+      h('button',{className:'btn btn-o',style:{width:'100%'},on:{click:()=>{
+        const lines = ['Ticker;Classe;Tipo;Percentual;Valor'];
+        for(const [classe,a] of Object.entries(aloc)){
+          const valorClasse = valorTotal * a.pct / 100;
+          for(const it of a.items){
+            const v = (valorClasse/a.items.length).toFixed(2);
+            lines.push(`${it.ticker};${classe};${it.tipo};${(a.pct/a.items.length).toFixed(1)}%;${v}`);
+          }
+        }
+        const blob = new Blob([lines.join('\n')], {type:'text/csv;charset=utf-8'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href=url; a.download='carteira-'+S.perfilInv+'-'+new Date().toISOString().split('T')[0]+'.csv';
+        a.click();
+        showToast('✅ Carteira exportada em CSV');
+      }}},'📥 Baixar carteira (CSV)')
+    ));
+
+    ct.append(h('div',{className:'card',style:{border:'1px solid var(--border-gold)',background:'rgba(212,175,55,.04)'}},
+      h('div',{style:{fontSize:'12px',color:'var(--text2)',lineHeight:'1.5'}},
+        '⚠️ ',h('b',{style:{color:'#d4af37'}},'Educacional:'),' carteira gerada por algoritmo baseado em seu perfil. Não é recomendação. Antes de aplicar, consulte um profissional certificado (CVM). Histórico de DY não garante retorno futuro.'
       )
     ));
   }
@@ -1725,6 +1888,237 @@ function renderInvestirTab(ct){
       ));
     });
   }
+}
+
+// ═══ CHAT IA TAB ═══
+// Chat com IA local + DeepSeek (se chave configurada).
+// Pra esposa entender o mercado em PT-BR sem complicação.
+function renderChatIATab(ct){
+  if(!S.chatMsgs) S.chatMsgs = [];
+
+  ct.append(h('div',{className:'card',style:{background:'linear-gradient(135deg,#7c3aed,#5b21b6)',border:'none',color:'#fff',padding:'18px'}},
+    h('div',{style:{display:'flex',alignItems:'center',gap:'10px'}},
+      h('div',{style:{fontSize:'32px'}},'💬'),
+      h('div',null,
+        h('div',{style:{fontSize:'18px',fontWeight:'900'}},'Chat com Agente IA'),
+        h('div',{style:{fontSize:'12px',opacity:'.9'}},'Tire dúvidas sobre mercado, investimentos, finanças')
+      )
+    )
+  ));
+
+  // Sugestões rápidas
+  const SUGESTOES = [
+    '💡 O que é dividend yield?',
+    '🏢 Vale a pena investir em FIIs?',
+    '📊 Como o Ibovespa funciona?',
+    '🎯 Qual o melhor perfil pra mim?',
+    '💰 Quanto preciso pra me aposentar?',
+    '⚡ O que é renda passiva?',
+    '🛡️ Reserva de emergência: quanto?',
+    '🌾 FIAGROs são seguros?',
+    '📈 Como começar a investir?',
+    '🏦 Tesouro Selic vs CDB?'
+  ];
+
+  // Lista de mensagens
+  const msgList = h('div',{style:{maxHeight:'400px',overflowY:'auto',padding:'4px 0',marginBottom:'12px'}});
+  if(!S.chatMsgs.length){
+    msgList.append(h('div',{className:'card empty'},'Toque numa pergunta abaixo pra começar ou digite a sua. Em PT-BR, simples e direto.'));
+  } else {
+    for(const m of S.chatMsgs){
+      const isUser = m.role === 'user';
+      msgList.append(h('div',{style:{display:'flex',justifyContent:isUser?'flex-end':'flex-start',marginBottom:'10px'}},
+        h('div',{style:{maxWidth:'85%',padding:'12px 14px',borderRadius:'14px',background:isUser?'linear-gradient(135deg,#d4af37,#b8860b)':'var(--card2)',color:isUser?'#000':'var(--text)',fontSize:'13px',lineHeight:'1.5',fontWeight:isUser?'700':'500',whiteSpace:'pre-wrap',border:'1px solid '+(isUser?'rgba(212,175,55,.5)':'var(--border)')}},
+          (isUser?'':'🤖 ')+m.text
+        )
+      ));
+    }
+  }
+  ct.append(msgList);
+
+  // Input + sugestões
+  ct.append(h('div',{className:'card'},
+    h('div',{style:{fontSize:'11px',color:'var(--text3)',fontWeight:'800',marginBottom:'8px',letterSpacing:'.5px'}},'PERGUNTAS RÁPIDAS'),
+    h('div',{style:{display:'flex',gap:'6px',flexWrap:'wrap',marginBottom:'12px'}},
+      ...SUGESTOES.map(s=>h('button',{
+        style:{padding:'8px 12px',fontSize:'11px',borderRadius:'18px',background:'rgba(168,85,247,.1)',color:'#c084fc',border:'1px solid rgba(168,85,247,.3)',fontWeight:'700'},
+        on:{click:()=>{
+          S.chatMsgs.push({role:'user',text:s});
+          chatRespond(s);
+          render();
+        }}
+      },s))
+    ),
+    h('div',{style:{display:'flex',gap:'6px'}},
+      h('input',{id:'chatInput',placeholder:'Digite sua pergunta...',style:{flex:'1'},
+        on:{keydown:e=>{
+          if(e.key==='Enter'){
+            const v=e.target.value.trim();
+            if(v){
+              S.chatMsgs.push({role:'user',text:v});
+              e.target.value='';
+              chatRespond(v);
+              render();
+            }
+          }
+        }}}),
+      h('button',{className:'btn btn-purple',style:{padding:'12px 18px'},on:{click:()=>{
+        const inp=document.getElementById('chatInput');
+        const v=(inp?.value||'').trim();
+        if(v){
+          S.chatMsgs.push({role:'user',text:v});
+          if(inp) inp.value='';
+          chatRespond(v);
+          render();
+        }
+      }}},'➤')
+    ),
+    S.chatMsgs.length ? h('button',{style:{marginTop:'8px',fontSize:'10px',color:'var(--text3)',background:'transparent'},on:{click:()=>{S.chatMsgs=[];render()}}},'🗑️ Limpar conversa') : null
+  ));
+}
+
+// Resposta IA: usa DeepSeek se chave configurada, senão usa respostas locais inteligentes
+async function chatRespond(question){
+  if(S.deepseekKey){
+    try{
+      const tE=tot(S.ent), tS=tot(S.sai), saldo=tE-tS;
+      const context = `Usuário tem saldo ${fmt(saldo)}, receitas ${fmt(tE)}, despesas ${fmt(tS)}, perfil ${S.perfilInv||'moderado'}. Responda em PT-BR, simples, sem jargão técnico, didático. Foco educacional. Sempre lembre que não é recomendação.`;
+      const res = await fetch('https://api.deepseek.com/v1/chat/completions',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+S.deepseekKey},
+        body:JSON.stringify({
+          model:'deepseek-chat',
+          messages:[
+            {role:'system',content:context},
+            ...S.chatMsgs.slice(-10).map(m=>({role:m.role==='user'?'user':'assistant',content:m.text})),
+          ],
+          max_tokens:600,
+          temperature:0.7
+        })
+      });
+      const j = await res.json();
+      const answer = j?.choices?.[0]?.message?.content || 'Desculpa, não consegui responder agora.';
+      S.chatMsgs.push({role:'assistant',text:answer});
+      save(); render();
+      return;
+    }catch(e){
+      // fallback pra local
+    }
+  }
+  // Respostas locais inteligentes baseadas em keywords
+  const q = question.toLowerCase();
+  let answer = '';
+  if(/dividend|provento|dividendos/.test(q)){
+    answer = '💰 **Dividend Yield (DY)** é o quanto uma empresa paga em dividendos por ano, dividido pelo preço da ação.\n\nExemplo: ITSA4 custa R$11 e paga R$0,90/ano = DY de ~8% ao ano.\n\nQuanto mais alto o DY, mais "renda passiva" você recebe. Mas DY altíssimo (>15%) pode ser sinal de empresa em crise!\n\n📊 Top no Brasil: PETR4 (12%), BBAS3 (10%), TAEE11 (9%), ITSA4 (8%).';
+  } else if(/fii|fundo imobili/.test(q)){
+    answer = '🏢 **FIIs (Fundos Imobiliários)** são fundos que compram imóveis ou recebíveis e distribuem aluguel mensalmente — isento de IR pra pessoa física!\n\n✅ Vantagens:\n• Dividendos MENSAIS (não trimestral como ações)\n• Isento de IR (até R$20k/mês vendendo)\n• Acessível: a partir de ~R$10/cota\n• Diversificação imobiliária\n\n⚠️ Riscos:\n• Vacância (imóvel vazio)\n• Variação do preço da cota\n• Concentração em poucos imóveis (fundos pequenos)\n\nDicas: começar por FIIs grandes (HGLG11, KNRI11, MXRF11).';
+  } else if(/ibovespa|ibov/.test(q)){
+    answer = '📊 **Ibovespa** é o índice das principais empresas da Bolsa BR. Mede a "saúde" do mercado.\n\nReúne ~80 empresas pesando por liquidez e valor. As mais pesadas hoje: Vale, Petrobras, Itaú, B3.\n\nQuando Ibov sobe, geralmente a maioria das ações sobe. Quando cai, idem. Mas tem exceções!\n\nMédia histórica: ~13% ao ano em real. Em dólar fica próximo de 0%, porque o real desvaloriza.';
+  } else if(/perfil|conservador|moderado|agressivo/.test(q)){
+    answer = '🎯 **Perfil de Risco** define quanto risco você tolera:\n\n🛡️ **Conservador** — não dorme se a carteira cair. Foco em RF (80%), FIIs (10%), Ações (10%).\n\n⚖️ **Moderado** — aceita oscilação moderada. RF (50%), FIIs (20%), Ações (25%), Cripto (5%).\n\n⚡ **Agressivo** — busca retorno alto, aceita perdas. RF (20%), FIIs (20%), Ações (40%), Cripto (20%).\n\nNão existe certo ou errado. Importa: que você consiga dormir tranquilo.';
+  } else if(/aposenta|liberdade financeira|independ/.test(q)){
+    answer = '🏆 **Aposentadoria / Independência Financeira**\n\nRegra dos 4%: pra ter X/mês, você precisa de X × 300 investido.\n\nExemplos:\n• R$3.000/mês → R$900.000 patrimônio\n• R$5.000/mês → R$1.500.000\n• R$10.000/mês → R$3.000.000\n\nComo chegar lá?\n• Aporte mensal CONSTANTE\n• Reinveste TODOS os dividendos\n• Juros compostos fazem mágica em 10-20 anos\n\nDica: comece HOJE, mesmo com R$100/mês. Tempo > Valor.';
+  } else if(/renda passiva|passive/.test(q)){
+    answer = '💵 **Renda Passiva** é dinheiro que entra SEM você trabalhar:\n\n• Dividendos de ações\n• Aluguéis de FIIs (mensais)\n• Juros do Tesouro/CDB\n• Aluguéis de imóveis reais\n• Royalties\n\nO objetivo é: renda passiva > seus gastos = independência financeira.\n\nMelhor estratégia HOJE:\n1. Reserva de emergência primeiro (6 meses de gastos)\n2. Aporta 20% da renda em DY (FIIs + ITSA4 + BBSE3)\n3. Reinveste TUDO\n4. Em 10-15 anos você não precisa mais trabalhar';
+  } else if(/reserva|emergência|emergencia/.test(q)){
+    answer = '🛡️ **Reserva de Emergência** = 6 meses dos seus gastos guardados.\n\nObjetivo: não precisar vender investimentos em crise.\n\nOnde guardar?\n• Tesouro Selic (liquidez D+1)\n• CDB liquidez diária (110% CDI)\n• NÃO use poupança (rende menos que tudo)\n\nFórmula: gastos mensais × 6.\nSe gasta R$3.000/mês, precisa de R$18.000 guardados.\n\nSó depois disso comece a investir em ações/FIIs.';
+  } else if(/fiagro/.test(q)){
+    answer = '🌾 **FIAGRO** é tipo FII, mas pra agronegócio!\n\nDY altíssimo: 12-14% ao ano (vs 7-9% dos FIIs comuns).\n\n✅ Vantagens:\n• Dividendos mensais\n• Isento de IR pra PF\n• Atrelado ao CDI (sobe com Selic)\n• Setor crucial do PIB BR\n\n⚠️ Riscos:\n• Risco de inadimplência do produtor\n• Volatilidade do agro (clima, commodities)\n• Liquidez menor que FIIs grandes\n\nTops: VGIA11 (14%), RZAG11 (13.5%), KNCA11 (12.5%).';
+  } else if(/começar|começa|iniciar|primeiro investimento/.test(q)){
+    answer = '🚀 **Como começar a investir** (passo a passo):\n\n1️⃣ Abrir conta numa corretora SEM TAXA: Rico, XP, Clear, Toro, Nuinvest, BTG. **GRÁTIS**.\n\n2️⃣ Reserva primeiro: 6 meses de gastos no Tesouro Selic.\n\n3️⃣ Aportes mensais (DCA): mesmo valor todo mês, automatizado.\n\n4️⃣ Primeira carteira simples:\n   • 50% Tesouro Selic\n   • 30% FIIs (HGLG11, MXRF11)\n   • 20% Ações (ITSA4, BBSE3)\n\n5️⃣ NÃO ouve "dica de amigo". Estude antes.\n\n6️⃣ Reinveste TUDO. Tempo + juros compostos = milhão.';
+  } else if(/cdb|tesouro|renda fixa/.test(q)){
+    answer = '🏦 **Renda Fixa** — Tesouro vs CDB:\n\n🏛️ **Tesouro** (governo, 100% seguro):\n• Selic: ~13% a.a., líquido D+1, ideal pra reserva\n• IPCA+: inflação + 6%, longo prazo, trava juro alto\n• Prefixado: taxa fixa, só se acreditar que juros vão CAIR\n\n💳 **CDB** (banco, FGC até R$250k):\n• Liquidez diária 100-110% CDI: pra reserva\n• Vencimento 120% CDI: maior retorno, sem liquidez\n• LCI/LCA: isento de IR (95% CDI = ~13% líquido)\n\nDicas:\n• Reserva: Tesouro Selic ou CDB liquidez diária\n• Médio prazo: CDB 120% CDI 2 anos\n• Longo prazo: IPCA+';
+  } else if(/cripto|bitcoin|btc|ethereum/.test(q)){
+    answer = '₿ **Criptomoedas**:\n\n✅ Tese:\n• Bitcoin = "ouro digital", escassez (21M)\n• Reserva contra inflação\n• Operação 24/7, sem intermediários\n\n⚠️ Riscos:\n• Volatilidade EXTREMA (50% pra cima/baixo é normal)\n• Regulação ainda incerta\n• Risco de você perder a senha = perde tudo\n• Golpes em altcoins\n\nDicas:\n• Máximo 5-15% da carteira (perfil moderado/agressivo)\n• Foca em BTC + ETH (ignore altcoins)\n• Compra programada (DCA) > timing\n• Carteira fria (hardware wallet) se >R$10k';
+  } else if(/oi\b|olá|ola\b/.test(q)){
+    answer = '👋 Oi! Sou o Agente IA do app. Posso ajudar com:\n\n• Como investir\n• Diferenças entre tipos de ativo\n• Estratégias pra dividendos\n• Reserva de emergência\n• Aposentadoria / independência financeira\n• Perfil de risco\n• E muito mais!\n\nUse os botões de pergunta rápida acima ou digite sua dúvida em PT-BR.';
+  } else if(/obrigad|valeu|legal\b|top\b/.test(q)){
+    answer = '😊 De nada! Foi bom ajudar.\n\nQualquer dúvida nova, é só perguntar. Estou aqui 24/7.';
+  } else {
+    answer = '🤔 Não entendi muito bem sua pergunta. Posso te ajudar com:\n\n📈 Investimentos (ações, FIIs, Tesouro, cripto)\n💰 Renda passiva / dividendos\n🛡️ Reserva de emergência\n🏆 Aposentadoria / independência\n📊 Mercado financeiro (Ibovespa, etc)\n\nReformula a pergunta de outro jeito?\n\n💡 Dica: se você configurar a chave DeepSeek no Agente, vou ficar MUITO mais inteligente.';
+  }
+  setTimeout(()=>{
+    S.chatMsgs.push({role:'assistant',text:answer});
+    save(); render();
+  }, 400);
+}
+
+// ═══ ESTUDOS TAB ═══
+// Material educacional em PT-BR
+function renderEstudosTab(ct){
+  const sub = S.estudosSub || 'basico';
+  const subs = [
+    {k:'basico',l:'🎓 Básico'},
+    {k:'intermediario',l:'📊 Intermediário'},
+    {k:'avancado',l:'⚡ Avançado'},
+    {k:'glossario',l:'📖 Glossário'}
+  ];
+  const bar = h('div',{className:'subtabs'});
+  for(const s of subs){
+    bar.append(h('button',{className:'subtab'+(sub===s.k?' on':''),on:{click:()=>{S.estudosSub=s.k;render()}}},s.l));
+  }
+  ct.append(bar);
+
+  const ESTUDOS = {
+    basico: [
+      {emoji:'💰',titulo:'O que é dinheiro pra investir?',body:'Dinheiro pra investir = sobra do mês depois de pagar TUDO (essencial + lazer + reserva). Nunca invista dinheiro do aluguel ou da emergência.'},
+      {emoji:'🛡️',titulo:'Reserva de emergência: faça PRIMEIRO',body:'Antes de qualquer investimento em ações/FIIs, junte 6 meses de gastos no Tesouro Selic. Isso te protege em crises (desemprego, problema de saúde).'},
+      {emoji:'🏛️',titulo:'Tesouro Direto: o investimento mais seguro do Brasil',body:'É emprestar dinheiro pro governo federal. Risco quase zero. Selic acompanha a Selic. IPCA+ acompanha a inflação. Prefixado trava uma taxa hoje.'},
+      {emoji:'💳',titulo:'CDB: banco te paga juros',body:'CDB é tipo Tesouro mas do banco. Garantido pelo FGC até R$250 mil. CDB 110% CDI = recebe 110% do que a Selic rende. Sempre escolha 100%+ CDI.'},
+      {emoji:'📈',titulo:'Ação: parte de uma empresa',body:'Comprar 1 ação da Itaúsa (ITSA4) = você vira sócio do Itaú (pequeno pedacinho). Quando a empresa lucra, ela pode pagar parte como dividendos pra você.'},
+      {emoji:'🏢',titulo:'FII: fundo de imóveis',body:'FII = você compra cotas de um fundo que tem prédios/galpões alugados. Recebe parte do aluguel mensalmente. ISENTO DE IR pra pessoa física.'}
+    ],
+    intermediario: [
+      {emoji:'💎',titulo:'Dividend Yield (DY)',body:'DY = dividendos anuais ÷ preço da ação × 100. ITSA4 paga ~R$0,90/ano e custa ~R$11. DY = 8%. Significa: a cada R$1.000 investidos, recebe R$80/ano (~R$6,67/mês).'},
+      {emoji:'⚖️',titulo:'Alocação por perfil',body:'CONSERVADOR: RF 80% / FII 10% / Ações 7% / Cripto 3%.\nMODERADO: RF 50% / FII 20% / Ações 25% / Cripto 5%.\nAGRESSIVO: RF 20% / FII 20% / Ações 40% / Cripto 20%.'},
+      {emoji:'🎯',titulo:'Regra dos 4% (independência financeira)',body:'Pra ter R$X/mês de renda passiva, precisa de X × 300 investido. Querer R$5.000/mês? Precisa de R$1,5 milhão. Aporte mensal constante + juros compostos chegam lá.'},
+      {emoji:'📊',titulo:'DCA — Dollar Cost Averaging',body:'Investir o MESMO valor TODO mês, independente do preço. Quando ação cai, você compra MAIS cotas. Quando sobe, menos. No longo prazo bate timing em 95% dos casos.'},
+      {emoji:'📉',titulo:'Drawdown faz parte',body:'TODO investimento de renda variável cai eventualmente. Carteira de ações cair 30% em ano de crise é normal. O importante é o retorno em 5+ anos, não o mês passado.'},
+      {emoji:'🔄',titulo:'Reinvestir dividendos',body:'Receber R$100 de dividendo e USAR? Atrasa anos sua aposentadoria. Reinvestir esses R$100 (comprar mais cotas) = juros compostos. Em 30 anos a diferença é absurda.'}
+    ],
+    avancado: [
+      {emoji:'📉',titulo:'RSI (Índice de Força Relativa)',body:'Indicador que vai de 0 a 100. RSI < 30 = sobrevendido (ativo CAIU muito, pode ricochetear). RSI > 70 = sobrecomprado (subiu muito, pode corrigir). Não funciona sozinho!'},
+      {emoji:'⚔️',titulo:'Cruz Dourada e Cruz da Morte',body:'Cruz Dourada: MM50 cruza pra CIMA da MM200. Sinal de tendência de alta. Cruz da Morte: oposto, sinal de baixa. Funciona em ETFs/Ibov, menos em ações individuais.'},
+      {emoji:'🎲',titulo:'Risk/Reward Ratio',body:'Stop em R$10 abaixo, alvo em R$30 acima = R/R 1:3. Mesmo errando 60%, ainda lucra. Win rate 60% × R/R 1:2 = trader profissional.'},
+      {emoji:'📈',titulo:'Beta de uma ação',body:'Mede volatilidade em relação ao Ibov. Beta = 1: ação se move igual ao Ibov. Beta > 1.5: ação varia mais (Magalu, criptos). Beta < 0.5: defensiva (Vivo, EnergiaSA).'},
+      {emoji:'🧠',titulo:'P/L (Preço/Lucro)',body:'Quantos anos a empresa precisa pra "se pagar" com lucro atual. P/L 10 = paga em 10 anos. Bancos BR têm P/L 5-7 (baratos). Big Techs USA P/L 25-40 (caros).'},
+      {emoji:'🌍',titulo:'Macro: Selic, IPCA, Dólar',body:'Selic alta = renda fixa atrativa, ações caem. Selic baixa = bom pra ações/FIIs. IPCA alto = inflação corrói retorno. Dólar alto = bom pra commodities (Vale, Suzano) e empresas exportadoras.'}
+    ],
+    glossario: [
+      {emoji:'A',titulo:'Ação',body:'Pedaço de uma empresa. Comprou ação = virou sócio.'},
+      {emoji:'B',titulo:'Bear / Bull',body:'Bear (urso) = mercado em queda. Bull (touro) = mercado em alta.'},
+      {emoji:'C',titulo:'CDI / CDB',body:'CDI = juros que bancos cobram entre si (próximo da Selic). CDB = título do banco que paga % do CDI.'},
+      {emoji:'D',titulo:'DCA / DY',body:'DCA = compra programada todo mês. DY = Dividend Yield, quanto a ação paga de dividendos por ano.'},
+      {emoji:'E',titulo:'ETF',body:'Fundo que replica um índice (ex: BOVA11 replica Ibovespa). 1 cota = pedacinho de 80 ações.'},
+      {emoji:'F',titulo:'FII / FIAGRO / FGC',body:'FII = fundo imobiliário. FIAGRO = fundo do agronegócio. FGC = seguro até R$250k em CDB/LCI.'},
+      {emoji:'I',titulo:'IPCA / Ibov',body:'IPCA = inflação oficial. Ibov = índice das principais ações BR.'},
+      {emoji:'L',titulo:'LCI / LCA',body:'Títulos isentos de IR. Imobiliário (LCI) ou Agro (LCA). Bom pra médio prazo.'},
+      {emoji:'P',titulo:'P/L',body:'Preço/Lucro. Quantos anos pra empresa "se pagar". Bancos BR P/L ~6, top.'},
+      {emoji:'S',titulo:'Selic / Stop',body:'Selic = taxa básica de juros do BC. Stop = limite de perda que você define ANTES da operação.'}
+    ]
+  };
+
+  const lista = ESTUDOS[sub] || [];
+  ct.append(h('div',{style:{marginBottom:'10px'}},
+    h('h3',{style:{color:'#d4af37',fontSize:'17px',margin:'0 0 4px'}},sub==='basico'?'🎓 Conceitos Básicos':sub==='intermediario'?'📊 Conhecimento Intermediário':sub==='avancado'?'⚡ Análise Técnica e Avançado':'📖 Glossário Rápido'),
+    h('div',{style:{fontSize:'11px',color:'var(--text2)'}},'Aprenda no seu ritmo. Cada card é um conceito completo em PT-BR simples.')
+  ));
+
+  for(const e of lista){
+    ct.append(h('div',{className:'tip'},
+      h('div',{className:'tip-ic',style:{fontSize:'20px'}},e.emoji),
+      h('div',{className:'tip-body'},
+        h('b',null,e.titulo),
+        e.body
+      )
+    ));
+  }
+
+  // CTA: ir pro Chat IA
+  ct.append(h('div',{className:'card empty'},
+    h('div',{style:{marginBottom:'10px'}},'Tem dúvida sobre algum desses conceitos?'),
+    h('button',{className:'btn btn-purple',on:{click:()=>{S.tab=9;render()}}},'💬 Pergunte ao Chat IA')
+  ));
 }
 
 function renderNewsTab(ct){
@@ -2684,17 +3078,19 @@ function render(){
   const greeting = _h < 6 ? 'Boa madrugada' : _h < 12 ? 'Bom dia' : _h < 18 ? 'Boa tarde' : 'Boa noite';
   const monthName = new Date().toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
 
+  const userName = S.userName || 'Você';
+  const userInitial = (userName.trim()[0]||'?').toUpperCase();
   app.append(h('div',{className:'hdr'},
     h('div',{className:'hdr-row'},
       h('div',{style:{flex:'1',minWidth:'0'}},
-        h('div',{className:'hdr-greet'},greeting+', Luan'),
+        h('div',{className:'hdr-greet'},greeting+', '+userName),
         h('h1',null,'Minhas Finanças'),
         h('div',{style:{display:'flex',alignItems:'center',gap:'8px',marginTop:'6px',flexWrap:'wrap'}},
           h('span',{style:{fontSize:'10px',color:'var(--text3)',fontWeight:'700',letterSpacing:'.5px',textTransform:'uppercase'}},monthName),
           h('span',{style:{fontSize:'10px',fontWeight:'800',color:_mercadoAberto?'var(--green)':'var(--text3)',padding:'3px 9px',borderRadius:'6px',background:'rgba(0,0,0,.4)',border:'1px solid var(--border)',letterSpacing:'.3px'}},_statusLabel)
         )
       ),
-      h('button',{className:'avatar',on:{click:()=>{S.modal='help';render()}}},'L')
+      h('button',{className:'avatar',on:{click:()=>{S.modal='profile';render()}}},userInitial)
     )
   ));
 
@@ -2718,33 +3114,38 @@ function render(){
     )
   ));
 
-  // STATUS BAR — chips horizontais elegantes
+  // STATUS BAR — chips horizontais clicáveis (cada um abre tela relevante)
   (()=>{
     const mktOK = (S.market.indices||[]).length > 0;
     const newsOK = (S.news||[]).length > 0;
     const notifOK = S.notifPerm === 'granted';
     const allOK = mktOK && newsOK && notifOK;
+    const chip = (bg, color, border, txt, click)=>h('button',{
+      style:{fontSize:'10px',padding:'5px 11px',borderRadius:'20px',background:bg,color,border:'1px solid '+border,fontWeight:'800',letterSpacing:'.3px',whiteSpace:'nowrap',cursor:'pointer'},
+      on:{click}
+    },txt);
     app.append(h('div',{style:{display:'flex',gap:'6px',padding:'12px 16px 0',overflowX:'auto',scrollbarWidth:'none'}},
-      h('span',{style:{fontSize:'10px',padding:'5px 11px',borderRadius:'20px',background:allOK?'rgba(0,217,126,.12)':'rgba(245,158,11,.12)',color:allOK?'#00d97e':'#fcd34d',border:'1px solid '+(allOK?'rgba(0,217,126,.3)':'rgba(245,158,11,.3)'),fontWeight:'800',letterSpacing:'.3px',whiteSpace:'nowrap'}},
-        allOK?'✓ Sistemas OK':'⚙ Inicializando'),
-      h('span',{style:{fontSize:'10px',padding:'5px 11px',borderRadius:'20px',background:mktOK?'rgba(0,217,126,.12)':'rgba(168,168,168,.08)',color:mktOK?'#00d97e':'var(--text3)',border:'1px solid var(--border)',fontWeight:'700',whiteSpace:'nowrap'}},
-        mktOK?'📊 Mercado':'⏳ Mercado'),
-      h('span',{style:{fontSize:'10px',padding:'5px 11px',borderRadius:'20px',background:newsOK?'rgba(0,217,126,.12)':'rgba(168,168,168,.08)',color:newsOK?'#00d97e':'var(--text3)',border:'1px solid var(--border)',fontWeight:'700',whiteSpace:'nowrap'}},
-        newsOK?'📰 '+S.news.length+' notícias':'⏳ Notícias'),
-      h('span',{style:{fontSize:'10px',padding:'5px 11px',borderRadius:'20px',background:notifOK?'rgba(0,217,126,.12)':'rgba(168,168,168,.08)',color:notifOK?'#00d97e':'var(--text3)',border:'1px solid var(--border)',fontWeight:'700',whiteSpace:'nowrap'}},
-        notifOK?'🔔 Notif':'🔕 OFF'),
-      h('button',{style:{fontSize:'10px',padding:'5px 11px',borderRadius:'20px',background:'rgba(212,175,55,.1)',color:'var(--gold)',border:'1px solid var(--border-gold)',fontWeight:'800',whiteSpace:'nowrap'},
-        on:{click:()=>{S.modal='import';render()}}},'🏦 Importar')
+      chip(allOK?'rgba(0,217,126,.12)':'rgba(245,158,11,.12)', allOK?'#00d97e':'#fcd34d', allOK?'rgba(0,217,126,.3)':'rgba(245,158,11,.3)',
+        allOK?'✓ Sistemas OK':'⚙ Inicializando', ()=>{S.modal='help';render()}),
+      chip(mktOK?'rgba(0,217,126,.12)':'rgba(168,168,168,.08)', mktOK?'#00d97e':'var(--text3)', 'var(--border)',
+        mktOK?'📊 Mercado':'⏳ Mercado', ()=>{S.tab=6;render()}),
+      chip(newsOK?'rgba(0,217,126,.12)':'rgba(168,168,168,.08)', newsOK?'#00d97e':'var(--text3)', 'var(--border)',
+        newsOK?'📰 '+S.news.length+' notícias':'⏳ Notícias', ()=>{S.tab=7;fetchAllNews();render()}),
+      chip(notifOK?'rgba(0,217,126,.12)':'rgba(255,59,59,.12)', notifOK?'#00d97e':'#ff3b3b', notifOK?'var(--border)':'rgba(255,59,59,.35)',
+        notifOK?'🔔 Notif':'🔕 OFF', ()=>{S.modal='help';render()}),
+      chip('rgba(212,175,55,.1)', 'var(--gold)', 'var(--border-gold)', '🏦 Importar', ()=>{S.modal='import';render()})
     ));
   })();
 
   const tabs=h('div',{className:'tabs'});
-  ['📊 Painel','💰 Entradas','💸 Saídas','🎯 Aquisição','📈 Investir','🏆 Metas','📰 Mercado','📰 Notícias','🤖 Agente','🔔 Bancos'+(pendentesBanco>0?' ('+pendentesBanco+')':'')].forEach((t,i)=>{
+  ['📊 Painel','💰 Entradas','💸 Saídas','🎯 Aquisição','📈 Investir','🏆 Metas','📰 Mercado','📰 Notícias','🤖 Agente','💬 Chat IA','📚 Estudos','🔔 Bancos'+(pendentesBanco>0?' ('+pendentesBanco+')':'')].forEach((t,i)=>{
     tabs.append(h('button',{className:'tab'+(S.tab===i?' on':''),on:{click:()=>{
       S.tab=i;
       if(i===6){fetchMarket();startAutoRefresh()}
       if(i===7){fetchAllNews();}
       if(i===8){startAutoRefresh()}
+      if(i===9){fetchMarket();fetchAllNews();}
+      if(i===10){fetchMarket();fetchAllNews();}
       render();
     }}},t));
   });
@@ -2841,6 +3242,54 @@ function render(){
         )
       ));
     }
+
+    // ─── GRÁFICO EVOLUÇÃO DO SALDO (12 meses) ───
+    (()=>{
+      // Calcula saldo mensal (entradas - saídas + acumulado de investimentos)
+      const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+      const saldoMes = MESES.map((_,i)=>{
+        const eMonth = S.ent.filter(e=>{
+          const d = String(e.data||'').match(/\/(\d{2})\//);
+          return d && parseInt(d[1])===i+1;
+        }).reduce((s,e)=>s+(parseFloat(e.valor)||0),0);
+        const sMonth = S.sai.filter(s=>{
+          const d = String(s.data||'').match(/\/(\d{2})\//);
+          return d && parseInt(d[1])===i+1;
+        }).reduce((s,e)=>s+(parseFloat(e.valor)||0),0);
+        return eMonth - sMonth;
+      });
+      const acumulado = [];
+      let acc = 0;
+      for(const v of saldoMes){ acc += v; acumulado.push(acc); }
+      const maxAbs = Math.max(...acumulado.map(Math.abs), 100);
+
+      ct.append(h('div',{className:'card'},
+        h('h3',{style:{margin:'0 0 12px',display:'flex',alignItems:'center',gap:'8px'}},
+          '📈 Evolução do Saldo',
+          h('span',{className:'pill',style:{background:'rgba(212,175,55,.15)',color:'var(--gold)'}},'2026')
+        ),
+        h('div',{style:{display:'flex',alignItems:'flex-end',gap:'4px',height:'140px',padding:'8px 0',position:'relative'}},
+          ...acumulado.map((v,i)=>{
+            const heightPct = Math.max(2, Math.abs(v) / maxAbs * 100);
+            const isPos = v >= 0;
+            return h('div',{style:{flex:'1',display:'flex',flexDirection:'column',alignItems:'center',gap:'4px',cursor:'pointer'},title:MESES[i]+': '+fmt(v)},
+              h('div',{style:{width:'100%',height:heightPct+'%',background:isPos?'linear-gradient(180deg,#34d399,#10b981)':'linear-gradient(180deg,#f87171,#ef4444)',borderRadius:'4px 4px 2px 2px',minHeight:'4px',boxShadow:isPos?'0 0 12px rgba(16,185,129,.3)':'0 0 12px rgba(239,68,68,.3)'}}),
+              h('div',{style:{fontSize:'9px',color:'var(--text3)',fontWeight:'700'}},MESES[i])
+            );
+          })
+        ),
+        h('div',{style:{display:'flex',justifyContent:'space-between',marginTop:'10px',fontSize:'11px'}},
+          h('div',null,
+            h('div',{style:{color:'var(--text3)',fontWeight:'700'}},'SALDO ATUAL'),
+            h('div',{style:{fontSize:'14px',fontWeight:'900',color:acumulado[acumulado.length-1]>=0?'#22c55e':'#ef4444'}},fmt(acumulado[acumulado.length-1]||0))
+          ),
+          h('div',{style:{textAlign:'right'}},
+            h('div',{style:{color:'var(--text3)',fontWeight:'700'}},'MELHOR MÊS'),
+            h('div',{style:{fontSize:'14px',fontWeight:'900',color:'#22c55e'}},fmt(Math.max(...saldoMes,0)))
+          )
+        )
+      ));
+    })();
 
     // Sugestões inteligentes
     const sugs = buildSuggestions();
@@ -3444,56 +3893,6 @@ function render(){
     ct.append(h('div',{className:'banner warn',style:{fontSize:'11px'}},
       '⚠️ ',h('b',null,'Importante:'),' análise EDUCACIONAL baseada em dados e regras matemáticas de gestão de risco. Não é recomendação. Nenhuma IA prevê mercado com 100% de acerto. Use com sua cabeça.'
     ));
-    // ─── Botão de TESTE de notificação (diagnóstico) ───
-    ct.append(h('div',{className:'card',style:{padding:'10px',background:'rgba(212,175,55,.05)',border:'1px solid var(--border-gold)'}},
-      h('div',{style:{display:'flex',gap:'8px',alignItems:'center'}},
-        h('span',{style:{fontSize:'18px'}},'🔔'),
-        h('div',{style:{flex:'1'}},
-          h('div',{style:{fontSize:'12px',fontWeight:'700'}},'Testar notificações'),
-          h('div',{style:{fontSize:'10px',color:'var(--text3)'}},'Dispara uma notificação agora pra confirmar que funciona')
-        ),
-        h('button',{className:'btn btn-o',style:{padding:'8px 14px',fontSize:'11px'},on:{click:async()=>{
-          if(!isNative || !LocalNotifications){
-            showToast('LocalNotifications não disponível (web mode)');
-            return;
-          }
-          try{
-            const perm = await LocalNotifications.checkPermissions();
-            if(perm.display !== 'granted'){
-              const req = await LocalNotifications.requestPermissions();
-              if(req.display !== 'granted'){
-                showToast('❌ Permissão negada. Vai em Configurações → Apps → Minhas Finanças → Notificações');
-                return;
-              }
-            }
-            // Cria o canal antes (garante que existe)
-            try{
-              await LocalNotifications.createChannel({
-                id:'financas-default',
-                name:'Lembretes Finanças',
-                description:'Lembretes de gastos, saldo e movimentações',
-                importance:5,
-                visibility:1,
-                vibration:true,
-                lights:true,
-                lightColor:'#d4af37'
-              });
-            }catch(e){}
-            await LocalNotifications.schedule({notifications:[{
-              id: 99999,
-              title:'🎉 Teste de Notificação',
-              body:'Se você está vendo isso, notificações estão funcionando! 🔔 O canal "Lembretes Finanças" foi criado.',
-              channelId:'financas-default',
-              schedule:{at: new Date(Date.now()+1000)}
-            }]});
-            showToast('✅ Notificação disparada! Verifique a bandeja');
-          }catch(e){
-            showToast('Erro: '+e.message);
-            console.error(e);
-          }
-        }}},'🧪 TESTAR AGORA')
-      )
-    ));
     // Sub-tabs
     const sub = S.agenteSub || 'ia';
     // sub-tabs: Sinais primeiro (era a mais útil), IA por último (opcional)
@@ -3830,8 +4229,14 @@ function render(){
     }
   }
 
-  // ═══ BANCOS (tab 9) ═══
-  if(S.tab===9){
+  // ═══ CHAT IA (tab 9) ═══
+  if(S.tab===9){ renderChatIATab(ct); }
+
+  // ═══ ESTUDOS (tab 10) ═══
+  if(S.tab===10){ renderEstudosTab(ct); }
+
+  // ═══ BANCOS (tab 11) ═══
+  if(S.tab===11){
     if(!isNative){
       ct.append(h('div',{className:'banner warn'},
         'Esta tela só funciona no APK Android. No navegador / iOS PWA não dá pra ler notificações dos apps de banco.'));
@@ -3940,10 +4345,57 @@ function render(){
 
   // ═══ IMPORT (file picker + parse + preview) ═══
   // ─── Modal: Ajuda / Permissões / iOS ───
+  // ─── Modal: Perfil do usuário ───
+  if(S.modal==='profile'){
+    const md2 = h('div',{className:'modal',on:{click:e=>{if(e.target===md2){S.modal=null;render()}}}},
+      h('div',{className:'modal-c',on:{click:e=>e.stopPropagation()}},
+        h('h2',null,'👤 Seu Perfil'),
+
+        h('div',{style:{display:'flex',alignItems:'center',gap:'14px',marginBottom:'18px',padding:'14px',background:'linear-gradient(135deg,rgba(212,175,55,.1),rgba(212,175,55,.02))',borderRadius:'14px',border:'1px solid var(--border-gold)'}},
+          h('div',{className:'avatar',style:{width:'58px',height:'58px',fontSize:'22px'}},(S.userName||'?').trim()[0]?.toUpperCase()||'?'),
+          h('div',null,
+            h('div',{style:{fontSize:'16px',fontWeight:'900'}},S.userName||'(Sem nome)'),
+            h('div',{style:{fontSize:'11px',color:'var(--text3)'}},'Personalize seu app')
+          )
+        ),
+
+        h('div',{className:'card'},
+          h('label',{style:{fontSize:'11px',color:'var(--text3)',fontWeight:'800',marginBottom:'4px',display:'block',letterSpacing:'.5px'}},'SEU NOME'),
+          inp(S.userName||'','Como você quer ser chamado(a)',v=>{S.userName=v||'Você';save();render()}),
+
+          h('label',{style:{fontSize:'11px',color:'var(--text3)',fontWeight:'800',marginTop:'14px',marginBottom:'4px',display:'block',letterSpacing:'.5px'}},'PERFIL DE INVESTIDOR'),
+          h('div',{style:{display:'flex',gap:'4px'}},
+            h('button',{className:'btn'+(S.perfilInv==='conservador'?' btn-b':''),style:{flex:'1',fontSize:'11px',padding:'10px 6px'},on:{click:()=>{S.perfilInv='conservador';save();render()}}},'🛡️ Conservador'),
+            h('button',{className:'btn'+(S.perfilInv==='moderado'?' btn-purple':''),style:{flex:'1',fontSize:'11px',padding:'10px 6px'},on:{click:()=>{S.perfilInv='moderado';save();render()}}},'⚖️ Moderado'),
+            h('button',{className:'btn'+(S.perfilInv==='agressivo'?' btn-r':''),style:{flex:'1',fontSize:'11px',padding:'10px 6px'},on:{click:()=>{S.perfilInv='agressivo';save();render()}}},'⚡ Agressivo')
+          ),
+
+          h('label',{style:{fontSize:'11px',color:'var(--text3)',fontWeight:'800',marginTop:'14px',marginBottom:'4px',display:'block',letterSpacing:'.5px'}},'% DA RENDA P/ INVESTIR'),
+          h('div',{style:{display:'flex',gap:'10px',alignItems:'center'}},
+            h('input',{type:'range',min:'1',max:'50',value:String(S.invPct||10),style:{flex:'1'},on:{input:e=>{S.invPct=parseInt(e.target.value);save();render()}}}),
+            h('span',{style:{fontSize:'16px',fontWeight:'900',color:'#a855f7',minWidth:'42px',textAlign:'right'}},(S.invPct||10)+'%')
+          )
+        ),
+
+        h('div',{className:'card'},
+          h('h3',{style:{margin:'0 0 8px'}},'⚡ Atalhos'),
+          h('button',{className:'btn',style:{width:'100%',marginBottom:'6px',background:'rgba(168,85,247,.1)',color:'#c084fc',border:'1px solid rgba(168,85,247,.3)',padding:'12px'},on:{click:()=>{S.modal=null;S.tab=9;render()}}},'💬 Abrir Chat IA'),
+          h('button',{className:'btn',style:{width:'100%',marginBottom:'6px',background:'rgba(212,175,55,.1)',color:'var(--gold)',border:'1px solid var(--border-gold)',padding:'12px'},on:{click:()=>{S.modal=null;S.tab=10;render()}}},'📚 Abrir Estudos'),
+          h('button',{className:'btn',style:{width:'100%',marginBottom:'6px',background:'rgba(34,197,94,.1)',color:'#22c55e',border:'1px solid rgba(34,197,94,.3)',padding:'12px'},on:{click:()=>{S.modal='help';render()}}},'🛡️ Saúde do Agente / Notificações'),
+          h('button',{className:'btn',style:{width:'100%',background:'rgba(245,158,11,.1)',color:'#f59e0b',border:'1px solid rgba(245,158,11,.3)',padding:'12px'},on:{click:()=>{S.modal='import';render()}}},'🏦 Importar Extrato')
+        ),
+
+        h('button',{className:'btn btn-g',style:{width:'100%',marginTop:'10px',padding:'14px',fontSize:'15px',fontWeight:'900'},on:{click:()=>{S.modal=null;render()}}},'✓ Fechar')
+      )
+    );
+    document.body.appendChild(md2);
+    return;
+  }
+
   if(S.modal==='help'){
     const dev = detectDevice();
     const md = h('div',{className:'modal',on:{click:e=>{if(e.target===md){S.modal=null;render()}}}},
-      h('div',{className:'modal-content',style:{maxWidth:'500px',width:'95%',maxHeight:'92vh',overflow:'auto'}},
+      h('div',{className:'modal-c',on:{click:e=>e.stopPropagation()}},
         h('h2',null,'🛡️ Saúde do Agente'),
         h('p',{style:{fontSize:'12px',color:'var(--text2)',margin:'4px 0 12px'}},
           'Pra notificações chegarem mesmo com app fechado/tela apagada.'
