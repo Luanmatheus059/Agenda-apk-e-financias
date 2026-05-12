@@ -291,6 +291,25 @@ html{scroll-behavior:smooth}
 <div id="toast" class="toast"></div>
 <input type="file" id="fileInput" accept=".csv,.ofx,.txt,.qif,.xlsx,.xls,.pdf,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/pdf" style="display:none">
 <script type="module">
+// GLOBAL ERROR HANDLER — captura qualquer erro JS não-tratado e mostra UI de fallback
+window.addEventListener('error', (ev)=>{
+  console.error('GLOBAL JS ERROR:', ev.error || ev.message);
+  const app = document.getElementById('app');
+  if(app && (!app.children.length || app.style.display === 'none')){
+    app.style.display = 'block';
+    app.innerHTML = `<div style="padding:40px 20px;color:#fafafa;font-family:Inter,sans-serif;text-align:center">
+      <h1 style="color:#d4af37;font-size:22px;margin-bottom:14px">⚠️ Erro de boot</h1>
+      <p style="font-size:12px;color:#a8a8a8;margin-bottom:10px">O app falhou ao iniciar. Tenta:</p>
+      <pre style="font-size:10px;background:#1a1a1a;padding:10px;border-radius:6px;color:#fbbf24;text-align:left;overflow:auto;max-height:120px">${(ev.error?.message || ev.message || 'erro desconhecido').toString().slice(0,250)}</pre>
+      <button onclick="location.reload()" style="margin-top:14px;background:#22c55e;color:#000;border:none;padding:12px 22px;border-radius:10px;font-weight:800">🔄 Recarregar app</button>
+      <button onclick="try{localStorage.clear();location.reload()}catch(e){location.reload()}" style="margin-top:8px;margin-left:6px;background:#ef4444;color:#fff;border:none;padding:12px 22px;border-radius:10px;font-weight:800">🗑️ Resetar dados</button>
+    </div>`;
+  }
+});
+window.addEventListener('unhandledrejection', (ev)=>{
+  console.error('UNHANDLED PROMISE:', ev.reason);
+});
+
 // ─── Capacitor bridge ───
 const Cap = window.Capacitor;
 const isNative = !!(Cap && Cap.isNativePlatform && Cap.isNativePlatform());
@@ -299,9 +318,13 @@ if (isNative && Cap.Plugins) {
   LocalNotifications = Cap.Plugins.LocalNotifications || null;
   BancoNotif = Cap.Plugins.BancoNotif || null;
   KeepAlive = Cap.Plugins.KeepAlive || null;
-  // Inicia foreground service automaticamente pra app rodar 24/7 em background
+  // Inicia foreground service em background com delay (não trava boot)
   if (KeepAlive) {
-    KeepAlive.start().then(()=>console.log('✅ KeepAlive started')).catch(e=>console.warn('KeepAlive:',e));
+    setTimeout(()=>{
+      try{
+        KeepAlive.start().then(()=>console.log('✅ KeepAlive started')).catch(e=>console.warn('KeepAlive:',e));
+      }catch(e){console.warn('KeepAlive sync err:',e)}
+    }, 2000);
   }
 }
 
@@ -3281,7 +3304,31 @@ function buildSuggestions(){
   return out;
 }
 
+// Wrapper que protege contra crash total. Se render falhar, mostra UI de erro
+// com botão pra resetar.
 function render(){
+  try {
+    return _renderInternal();
+  } catch(err) {
+    console.error('RENDER CRASH:', err);
+    try {
+      const app = document.getElementById('app');
+      if(app){
+        app.innerHTML = `
+          <div style="padding:30px 20px;color:#fafafa;font-family:Inter,sans-serif;text-align:center">
+            <h1 style="color:#d4af37;margin-bottom:20px;font-size:24px">⚠️ Erro de renderização</h1>
+            <p style="margin-bottom:14px;color:#a8a8a8;font-size:13px;line-height:1.5">O app encontrou um erro mas não foi morto.</p>
+            <p style="font-family:monospace;background:#1a1a1a;padding:12px;border-radius:8px;font-size:11px;text-align:left;overflow:auto;border:1px solid #2a2a2a;color:#fbbf24;margin-bottom:18px">${(err && err.message || String(err)).slice(0,300)}</p>
+            <button onclick="try{S.modal=null;S.tab=0;render();}catch(e){location.reload()}" style="background:linear-gradient(135deg,#00d97e,#34d399);color:#000;border:none;padding:14px 24px;border-radius:12px;font-weight:800;font-size:14px;margin-right:8px">🏠 Voltar pro Painel</button>
+            <button onclick="try{localStorage.clear();location.reload();}catch(e){location.reload()}" style="background:#ef4444;color:#fff;border:none;padding:14px 24px;border-radius:12px;font-weight:800;font-size:14px;margin-top:8px">🗑️ Resetar tudo</button>
+          </div>
+        `;
+      }
+    } catch(e2) { /* nada a fazer */ }
+  }
+}
+
+function _renderInternal(){
   // CRÍTICO: remove modais antigos do body antes de renderizar (senão ficam presos)
   document.querySelectorAll('body > .modal').forEach(m=>m.remove());
   const app=document.getElementById('app');app.innerHTML='';
