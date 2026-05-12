@@ -2632,7 +2632,7 @@ function render(){
   const pago=S.sai.filter(s=>s.status==='Pago').reduce((s,e)=>s+(parseFloat(e.valor)||0),0);
   const aq=S.aquisicao;
   const aqAcum=aq.mensal.reduce((s,v)=>s+(parseFloat(v)||0),0);
-  const tInv=S.inv.reduce((s,v)=>s+(parseFloat(v.investido)||0),0);
+  const tInvVal=S.inv.reduce((s,v)=>s+(parseFloat(v.investido)||0),0);
   const pendentesBanco = S.bankNotifs.filter(n=>!n.resolvido).length;
 
   // Status do mercado B3 (10h-18h dias úteis)
