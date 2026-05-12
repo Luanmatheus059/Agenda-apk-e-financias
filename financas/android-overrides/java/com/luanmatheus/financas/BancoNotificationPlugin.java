@@ -64,43 +64,58 @@ public class BancoNotificationPlugin extends Plugin {
     }
 
     @PluginMethod
-    public void getCaptured(PluginCall call) {
-        try {
-            SharedPreferences sp = getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-            String raw = sp.getString(KEY_LIST, "[]");
-            JSONArray arr = new JSONArray(raw);
-            JSObject ret = new JSObject();
-            ret.put("items", JSArray.from(arr.toString()));
-            call.resolve(ret);
-        } catch (Exception e) {
-            call.reject("get failed", e);
-        }
-    }
-
-    @PluginMethod
-    public void markResolved(PluginCall call) {
-        try {
-            String id = call.getString("id", "");
-            if (TextUtils.isEmpty(id)) { call.reject("missing id"); return; }
-            SharedPreferences sp = getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-            JSONArray arr = new JSONArray(sp.getString(KEY_LIST, "[]"));
-            JSONArray out = new JSONArray();
-            for (int i = 0; i < arr.length(); i++) {
-                JSONObject o = arr.getJSONObject(i);
-                if (!o.optString("id").equals(id)) out.put(o);
+    public void getCaptured(final PluginCall call) {
+        // Roda em background thread pra NÃO travar o thread principal
+        new Thread(() -> {
+            try {
+                SharedPreferences sp = getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+                String raw = sp.getString(KEY_LIST, "[]");
+                JSONArray arr = new JSONArray(raw);
+                // Limita aos 100 mais recentes (evita travamento se acumulou muitos)
+                int max = Math.min(100, arr.length());
+                JSONArray limited = new JSONArray();
+                for (int i = arr.length() - max; i < arr.length(); i++) {
+                    if (i >= 0) limited.put(arr.get(i));
+                }
+                JSObject ret = new JSObject();
+                // Retorna como STRING pra deixar JS parsar em background — não JSArray.from() que parsea 2x
+                ret.put("items", limited.toString());
+                ret.put("total", arr.length());
+                call.resolve(ret);
+            } catch (Exception e) {
+                call.reject("get failed", e);
             }
-            sp.edit().putString(KEY_LIST, out.toString()).apply();
-            call.resolve();
-        } catch (Exception e) {
-            call.reject("mark failed", e);
-        }
+        }).start();
     }
 
     @PluginMethod
-    public void clearAll(PluginCall call) {
-        getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .edit().putString(KEY_LIST, "[]").apply();
-        call.resolve();
+    public void markResolved(final PluginCall call) {
+        new Thread(() -> {
+            try {
+                String id = call.getString("id", "");
+                if (TextUtils.isEmpty(id)) { call.reject("missing id"); return; }
+                SharedPreferences sp = getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+                JSONArray arr = new JSONArray(sp.getString(KEY_LIST, "[]"));
+                JSONArray out = new JSONArray();
+                for (int i = 0; i < arr.length(); i++) {
+                    JSONObject o = arr.getJSONObject(i);
+                    if (!o.optString("id").equals(id)) out.put(o);
+                }
+                sp.edit().putString(KEY_LIST, out.toString()).apply();
+                call.resolve();
+            } catch (Exception e) {
+                call.reject("mark failed", e);
+            }
+        }).start();
+    }
+
+    @PluginMethod
+    public void clearAll(final PluginCall call) {
+        new Thread(() -> {
+            getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .edit().putString(KEY_LIST, "[]").apply();
+            call.resolve();
+        }).start();
     }
 
     private boolean isNotificationListenerEnabled() {
