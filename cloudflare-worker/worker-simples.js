@@ -1,6 +1,5 @@
-// AGENTE FINANCEIRO — Cloudflare Worker
+// AGENTE FINANCEIRO — Cloudflare Worker v2 (fontes confiáveis)
 // Cron 1min, sem GitHub Actions, sem lag.
-// Cola ESTE arquivo no editor do Cloudflare e clica Deploy.
 
 const T1='8224992163';
 const T2='AAF1B80laJI';
@@ -8,38 +7,74 @@ const T3='P9Re4f6mcAU5F5DRnhmiYG4';
 const TOKEN=T1+':'+T2+'_'+T3;
 const CHAT='5933857921';
 
-async function quote(s){
+async function brapi(syms){
   try{
-    const r=await fetch('https://query1.finance.yahoo.com/v8/finance/chart/'+s+'?interval=15m&range=1d');
-    const d=await r.json();
-    const m=d.chart.result[0].meta;
-    return {p:m.regularMarketPrice, c:(m.regularMarketPrice-m.previousClose)/m.previousClose*100};
-  }catch(e){return null}
+    const r = await fetch('https://brapi.dev/api/quote/'+syms.join(','));
+    const d = await r.json();
+    const out = {};
+    for(const x of (d.results||[])){
+      out[x.symbol] = {p: x.regularMarketPrice, c: x.regularMarketChangePercent||0};
+    }
+    return out;
+  }catch(e){return {}}
+}
+
+async function coingecko(){
+  try{
+    const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd&include_24hr_change=true');
+    const d = await r.json();
+    return {
+      btc: d.bitcoin ? {p: d.bitcoin.usd, c: d.bitcoin.usd_24h_change||0} : null,
+      eth: d.ethereum ? {p: d.ethereum.usd, c: d.ethereum.usd_24h_change||0} : null
+    };
+  }catch(e){return {}}
+}
+
+async function awesome(){
+  try{
+    const r = await fetch('https://economia.awesomeapi.com.br/last/USD-BRL');
+    const d = await r.json();
+    if(d.USDBRL) return {p: parseFloat(d.USDBRL.bid), c: parseFloat(d.USDBRL.pctChange)||0};
+  }catch(e){}
+  return null;
 }
 
 function pct(c){return c==null?'-':(c>=0?'🟢 +':'🔴 ')+c.toFixed(2)+'%'}
 function intf(p){return p?Math.round(p).toLocaleString('de-DE'):'-'}
 
 async function run(){
-  const [ibov,usd,btc,petr,vale]=await Promise.all([
-    quote('^BVSP'), quote('USDBRL=X'), quote('BTC-USD'),
-    quote('PETR4.SA'), quote('VALE3.SA')
+  const [stocks, cg, usd] = await Promise.all([
+    brapi(['IBOV','PETR4','VALE3','ITUB4','BBAS3']),
+    coingecko(),
+    awesome()
   ]);
-  const t=new Date(Date.now()-3*3600*1000).toISOString().slice(11,16);
-  const txt='📊 <b>'+t+' BR</b>\n\n'+
-    'Ibov: '+intf(ibov?.p)+' '+pct(ibov?.c)+'\n'+
-    'USD: '+(usd?'R$ '+usd.p.toFixed(4):'-')+' '+pct(usd?.c)+'\n'+
-    'BTC: $'+intf(btc?.p)+' '+pct(btc?.c)+'\n'+
-    'PETR4: '+(petr?'R$ '+petr.p.toFixed(2):'-')+' '+pct(petr?.c)+'\n'+
-    'VALE3: '+(vale?'R$ '+vale.p.toFixed(2):'-')+' '+pct(vale?.c);
-  await fetch('https://api.telegram.org/bot'+TOKEN+'/sendMessage', {
+
+  const ibov = stocks.IBOV, petr = stocks.PETR4, vale = stocks.VALE3, itub = stocks.ITUB4, bbas = stocks.BBAS3, btc = cg.btc;
+
+  const t = new Date(Date.now()-3*3600*1000).toISOString().slice(11,16);
+  const txt = '📊 <b>'+t+' BR</b>\n\n' +
+    '<b>📊 ÍNDICES</b>\n' +
+    'Ibov: '+intf(ibov?.p)+' pts '+pct(ibov?.c)+'\n' +
+    'USD: '+(usd?'R$ '+usd.p.toFixed(4):'-')+' '+pct(usd?.c)+'\n' +
+    'BTC: $'+intf(btc?.p)+' '+pct(btc?.c)+'\n\n' +
+    '<b>📈 BLUE CHIPS</b>\n' +
+    'PETR4: '+(petr?'R$ '+petr.p.toFixed(2):'-')+' '+pct(petr?.c)+'\n' +
+    'VALE3: '+(vale?'R$ '+vale.p.toFixed(2):'-')+' '+pct(vale?.c)+'\n' +
+    'ITUB4: '+(itub?'R$ '+itub.p.toFixed(2):'-')+' '+pct(itub?.c)+'\n' +
+    'BBAS3: '+(bbas?'R$ '+bbas.p.toFixed(2):'-')+' '+pct(bbas?.c);
+
+  const res = await fetch('https://api.telegram.org/bot'+TOKEN+'/sendMessage', {
     method:'POST',
     headers:{'Content-Type':'application/x-www-form-urlencoded'},
-    body:new URLSearchParams({chat_id:CHAT, text:txt, parse_mode:'HTML'})
+    body: new URLSearchParams({chat_id:CHAT, text:txt, parse_mode:'HTML'})
   });
+  return res.ok;
 }
 
 export default {
-  async fetch(){ await run(); return new Response('OK'); },
+  async fetch(){
+    const ok = await run();
+    return new Response(ok ? 'OK\n' : 'FAIL\n', {status: ok?200:500});
+  },
   async scheduled(ev, env, ctx){ ctx.waitUntil(run()); }
 };
