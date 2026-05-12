@@ -996,6 +996,10 @@ async function fetchMarket(force){
     console.log('📊 Mercado: '+indices.length+' índices + '+stocks.length+' ações');
   }catch(e){
     console.error('Market fetch error',e);
+    // Marca timestamp mesmo em erro pra status mudar de 'Inicializando' pra 'Sem conexão'
+    S.market.ts = Date.now();
+    S.market.error = e.message || 'sem conexão';
+    LS.set('market', S.market);
   }
   S.marketLoading=false; render();
 }
@@ -1390,45 +1394,41 @@ async function fetchRSS(url, sourceName){
 }
 
 async function fetchAllNews(){
-  // Cache 60s pra não martelar
   if(Date.now() - S.newsLastTs < 60_000 && S.news.length) return;
   S.newsLoading = true; render();
-  const cat = S.newsCategory || 'geral';
-  const sources = NEWS_SOURCES[cat] || NEWS_SOURCES.geral;
-  const all = [];
-
-  // Busca em paralelo todas as fontes da categoria
-  const results = await Promise.allSettled(sources.map(s => fetchRSS(s.url, s.name)));
-  for(const r of results){
-    if(r.status === 'fulfilled') all.push(...r.value);
+  try{
+    const cat = S.newsCategory || 'geral';
+    const sources = NEWS_SOURCES[cat] || NEWS_SOURCES.geral;
+    const all = [];
+    const results = await Promise.allSettled(sources.map(s => fetchRSS(s.url, s.name)));
+    for(const r of results){
+      if(r.status === 'fulfilled') all.push(...r.value);
+    }
+    const seen = new Set();
+    const unique = [];
+    for(const n of all){
+      const k = (n.title||'').toLowerCase().slice(0,60);
+      if(!seen.has(k)){ seen.add(k); unique.push(n); }
+    }
+    unique.sort((a,b)=>b.date-a.date);
+    S.news = unique.slice(0, 50);
+    let bull=0, bear=0, neutral=0;
+    for(const n of S.news){
+      if(n.sentiment?.label==='BULL') bull++;
+      else if(n.sentiment?.label==='BEAR') bear++;
+      else neutral++;
+    }
+    const total = bull+bear+neutral || 1;
+    S.newsSentiment = {bull, bear, neutral, score: ((bull - bear) / total * 100).toFixed(0)};
+  }catch(e){
+    console.error('News fetch error',e);
+  }finally{
+    // SEMPRE marca timestamp (mesmo em erro) pra status sair de 'Inicializando'
+    S.newsLastTs = Date.now();
+    S.newsLoading = false;
+    save();
+    render();
   }
-
-  // Dedup por título + ordena por data desc
-  const seen = new Set();
-  const unique = [];
-  for(const n of all){
-    const k = n.title.toLowerCase().slice(0,60);
-    if(!seen.has(k)){ seen.add(k); unique.push(n); }
-  }
-  unique.sort((a,b)=>b.date-a.date);
-  S.news = unique.slice(0, 50);
-
-  // Agrega sentimento global
-  let bull=0, bear=0, neutral=0;
-  for(const n of S.news){
-    if(n.sentiment.label==='BULL') bull++;
-    else if(n.sentiment.label==='BEAR') bear++;
-    else neutral++;
-  }
-  const total = bull+bear+neutral || 1;
-  S.newsSentiment = {
-    bull, bear, neutral,
-    score: ((bull - bear) / total * 100).toFixed(0)
-  };
-  S.newsLastTs = Date.now();
-  S.newsLoading = false;
-  save();
-  render();
 }
 
 // ─── Universo de ativos com DY (DY médio histórico, dados públicos B3) ───
@@ -3329,16 +3329,31 @@ function render(){
     const mktOK = (S.market.indices||[]).length > 0;
     const newsOK = (S.news||[]).length > 0;
     const notifOK = S.notifPerm === 'granted';
+    // Distingue 'nunca carregou' (Inicializando) de 'tentou e falhou' (Sem conexão)
+    const mktTried = !!S.market.ts;
+    const newsTried = !!S.newsLastTs;
     const allOK = mktOK && newsOK && notifOK;
+    const allTried = mktTried && newsTried;
+    let mainLbl, mainBg, mainColor;
+    if(allOK){ mainLbl='✓ Sistemas OK'; mainBg='rgba(0,217,126,.12)'; mainColor='#00d97e'; }
+    else if(allTried && (!mktOK || !newsOK)){ mainLbl='⚠️ Tente abrir o app'; mainBg='rgba(245,158,11,.12)'; mainColor='#fcd34d'; }
+    else { mainLbl='⚙ Carregando...'; mainBg='rgba(245,158,11,.12)'; mainColor='#fcd34d'; }
+
     const chip = (bg, color, border, txt, click)=>h('button',{
       style:{fontSize:'10px',padding:'5px 11px',borderRadius:'20px',background:bg,color,border:'1px solid '+border,fontWeight:'800',letterSpacing:'.3px',whiteSpace:'nowrap',cursor:'pointer'},
       on:{click}
     },txt);
     app.append(h('div',{style:{display:'flex',gap:'6px',padding:'12px 16px 0',overflowX:'auto',scrollbarWidth:'none'}},
-      chip(allOK?'rgba(0,217,126,.12)':'rgba(245,158,11,.12)', allOK?'#00d97e':'#fcd34d', allOK?'rgba(0,217,126,.3)':'rgba(245,158,11,.3)',
-        allOK?'✓ Sistemas OK':'⚙ Inicializando', ()=>{S.modal='help';render()}),
+      chip(mainBg, mainColor, mainColor+'4d',
+        mainLbl, ()=>{
+          // Toca no chip "Inicializando" → força reload de tudo
+          S.market.ts = 0;
+          S.newsLastTs = 0;
+          fetchMarket(true).then(()=>render());
+          fetchAllNews().then(()=>render());
+        }),
       chip(mktOK?'rgba(0,217,126,.12)':'rgba(168,168,168,.08)', mktOK?'#00d97e':'var(--text3)', 'var(--border)',
-        mktOK?'📊 Mercado':'⏳ Mercado', ()=>{S.tab=6;render()}),
+        mktOK?'📊 Mercado':'⏳ Mercado', ()=>{S.tab=6;fetchMarket(true);render()}),
       chip(newsOK?'rgba(0,217,126,.12)':'rgba(168,168,168,.08)', newsOK?'#00d97e':'var(--text3)', 'var(--border)',
         newsOK?'📰 '+S.news.length+' notícias':'⏳ Notícias', ()=>{S.tab=7;fetchAllNews();render()}),
       chip(notifOK?'rgba(0,217,126,.12)':'rgba(255,59,59,.12)', notifOK?'#00d97e':'#ff3b3b', notifOK?'var(--border)':'rgba(255,59,59,.35)',
