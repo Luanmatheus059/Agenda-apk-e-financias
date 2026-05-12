@@ -2604,37 +2604,57 @@ async function scheduleAggressiveNotifications(){
 }
 
 // ─── Bank notification capture ───
+let _bankRefreshing = false;
+
 async function refreshBankNotifs(){
   if(!BancoNotif) return;
-  // Roda em background com timeout — NÃO bloqueia UI
-  // Toast inicial pra feedback imediato
-  showToast('🔄 Buscando notificações de banco...');
+  if(_bankRefreshing){ showToast('⏳ Já buscando, espera...'); return; }
+  _bankRefreshing = true;
+  S.bankLoading = true; render();
+  showToast('🔄 Buscando...');
   try{
-    // Timeout de 5s pra plugin não travar
     const withTimeout = (p, ms)=>Promise.race([
       p,
       new Promise((_,r)=>setTimeout(()=>r(new Error('timeout')), ms))
     ]);
-    const r = await withTimeout(BancoNotif.getCaptured(), 5000);
+    const r = await withTimeout(BancoNotif.getCaptured(), 3000);
     let items = [];
     if(r && r.items){
       if(Array.isArray(r.items)) items = r.items;
       else if(typeof r.items === 'string'){
-        try{ items = JSON.parse(r.items); }catch(e){}
+        try{ items = JSON.parse(r.items); }catch(e){console.warn('parse fail',e)}
       }
     }
-    // Limita aos 100 mais recentes pra não travar render
-    S.bankNotifs = items.slice(0, 100);
+    S.bankNotifs = items.slice(-100);
     try{
-      const p = await withTimeout(BancoNotif.isPermissionGranted(), 2000);
+      const p = await withTimeout(BancoNotif.isPermissionGranted(), 1000);
       S.bankPerm = !!p?.granted;
-    }catch(e){console.warn('perm check fail',e.message)}
+    }catch(e){}
     showToast('✅ '+S.bankNotifs.length+' notificações');
-    render();
   }catch(e){
     console.warn('refreshBankNotifs:', e.message);
-    showToast('⚠️ '+(e.message==='timeout' ? 'Plugin travou (timeout 5s)' : 'Erro ao buscar'));
+    showToast(e.message==='timeout' ? '⚠️ Plugin travou. Toque LIMPAR pra zerar.' : '⚠️ Erro');
+  }finally{
+    _bankRefreshing = false;
+    S.bankLoading = false;
+    render();
   }
+}
+
+async function clearAllBankNotifs(){
+  if(!BancoNotif) return;
+  if(typeof confirm === 'function' && !confirm('Limpar TODAS as notificações de banco acumuladas?')) return;
+  showToast('🗑️ Limpando...');
+  try{
+    const withTimeout = (p, ms)=>Promise.race([
+      p,
+      new Promise((_,r)=>setTimeout(()=>r(new Error('timeout')), ms))
+    ]);
+    await withTimeout(BancoNotif.clearAll(), 2000);
+  }catch(e){console.warn('clearAll',e.message)}
+  S.bankNotifs = [];
+  showToast('✅ Tudo limpo!');
+  render();
 }
 async function requestBankPerm(){
   if(!BancoNotif) return;
@@ -4595,7 +4615,13 @@ function _renderInternal(){
               h('div',{className:'banner warn'},'⚠️ Habilite o acesso à notificação. Toque em "Abrir Configurações", encontre "Minhas Finanças" e ative.'),
               h('button',{className:'btn btn-o',style:{width:'100%',padding:'12px'},on:{click:requestBankPerm}},'Abrir Configurações de Notificação')
             ),
-        h('button',{className:'btn-add',style:{marginTop:'10px'},on:{click:refreshBankNotifs}},'🔄 Atualizar lista')
+        h('div',{style:{display:'flex',gap:'8px',marginTop:'10px'}},
+          h('button',{className:'btn-add',disabled:S.bankLoading,style:{flex:'2',opacity:S.bankLoading?'.5':'1'},
+            on:{click:()=>{if(!S.bankLoading) refreshBankNotifs()}}},
+            S.bankLoading?'⏳ Buscando...':'🔄 Atualizar lista'),
+          h('button',{className:'btn btn-r',style:{flex:'1',padding:'13px',fontSize:'12px'},
+            on:{click:clearAllBankNotifs}},'🗑️ Limpar')
+        )
       ));
 
       const pend = S.bankNotifs;
