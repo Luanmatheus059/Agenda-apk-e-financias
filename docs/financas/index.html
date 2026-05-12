@@ -3066,6 +3066,8 @@ function buildSuggestions(){
 }
 
 function render(){
+  // CRÍTICO: remove modais antigos do body antes de renderizar (senão ficam presos)
+  document.querySelectorAll('body > .modal').forEach(m=>m.remove());
   const app=document.getElementById('app');app.innerHTML='';
   const tE=tot(S.ent), tS=tot(S.sai), saldo=tE-tS;
   const nPago=S.sai.filter(s=>s.status==='Não Pago').reduce((s,e)=>s+(parseFloat(e.valor)||0),0);
@@ -4063,7 +4065,19 @@ function render(){
           !hasKey?h('a',{href:'https://platform.deepseek.com',target:'_blank',style:{color:'#3b82f6'}},'platform.deepseek.com'):null
         ),
         h('input',{type:'password',value:S.deepseekKey||'',placeholder:'sk-...',style:{marginBottom:'8px'},
-          on:{change:e=>{S.deepseekKey=e.target.value;save();render();if(e.target.value.length>10){showToast('✅ Chave salva. IA complementa automaticamente.');setTimeout(()=>callDeepSeek(),500)}}}}),
+          on:{
+            // input: salva a cada letra direto em LS SEM render (evita perder foco)
+            input:e=>{S.deepseekKey=e.target.value;LS.set('deepseekKey',S.deepseekKey)},
+            // blur (sai do campo): dispara análise se chave válida + re-render
+            blur:e=>{
+              save();
+              if(S.deepseekKey && S.deepseekKey.length>10){
+                showToast('✅ Chave salva. IA complementa automaticamente.');
+                setTimeout(()=>callDeepSeek(),500);
+              }
+              render();
+            }
+          }}),
         h('div',{style:{fontSize:'10px',color:'var(--text3)',fontStyle:'italic'}},
           hasKey?'✓ Configurada. Análise roda em background. Não precisa apertar nada.':'Sem chave o app usa IA LOCAL (já funciona, sem custo).'
         )
