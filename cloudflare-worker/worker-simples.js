@@ -1,26 +1,26 @@
-// AGENTE FINANCEIRO — Cloudflare Worker v3 COMPLETO
-// • Snapshot mercado (sempre)
-// • Notícias PT-BR com FOTO (1x por hora)
-// • Dashboard PNG via QuickChart (1x por hora)
-// • Sala de sinais (a cada 30 min)
-// Cron: * * * * * (cada minuto, mas envia diferente baseado no horário)
+// AGENTE FINANCEIRO — Cloudflare Worker v4
+// Snapshot mercado + Dashboard PNG + Notícias com foto
 
 const T1='8224992163';
 const T2='AAF1B80laJI';
 const T3='P9Re4f6mcAU5F5DRnhmiYG4';
 const TOKEN=T1+':'+T2+'_'+T3;
 const CHAT='5933857921';
+const UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
 
-async function brapi(syms){
+// Yahoo Finance via /v8/chart com User-Agent
+async function yh(sym){
   try{
-    const r = await fetch('https://brapi.dev/api/quote/'+syms.join(','));
+    const r = await fetch('https://query1.finance.yahoo.com/v8/finance/chart/'+sym+'?interval=15m&range=1d', {
+      headers: {'User-Agent': UA, 'Accept': 'application/json'}
+    });
     const d = await r.json();
-    const out = {};
-    for(const x of (d.results||[])){
-      out[x.symbol] = {p: x.regularMarketPrice, c: x.regularMarketChangePercent||0};
+    const m = d?.chart?.result?.[0]?.meta;
+    if(m?.regularMarketPrice && m?.previousClose){
+      return {p: m.regularMarketPrice, c: (m.regularMarketPrice - m.previousClose)/m.previousClose*100};
     }
-    return out;
-  }catch(e){return {}}
+  }catch(e){}
+  return null;
 }
 
 async function coingecko(){
@@ -43,12 +43,10 @@ async function awesome(){
   return null;
 }
 
-// Notícias PT-BR via rss2json (sem CORS issue)
 async function getNews(){
   const sources = [
     {url:'https://www.infomoney.com.br/feed/', name:'InfoMoney'},
     {url:'https://www.moneytimes.com.br/feed/', name:'MoneyTimes'},
-    {url:'https://valor.globo.com/valor-investe/rss/', name:'Valor'},
   ];
   const all = [];
   for(const s of sources){
@@ -61,11 +59,11 @@ async function getNews(){
           const m = item.description.match(/<img[^>]+src=["']([^"']+)["']/);
           if(m) img = m[1];
         }
-        all.push({title:item.title, link:item.link, source:s.name, image:img, date:item.pubDate});
+        all.push({title:item.title, link:item.link, source:s.name, image:img});
       }
     }catch(e){}
   }
-  return all.slice(0, 5);
+  return all.slice(0,4);
 }
 
 function pct(c){return c==null?'-':(c>=0?'🟢 +':'🔴 ')+c.toFixed(2)+'%'}
@@ -73,29 +71,24 @@ function intf(p){return p?Math.round(p).toLocaleString('de-DE'):'-'}
 
 async function send(text){
   await fetch('https://api.telegram.org/bot'+TOKEN+'/sendMessage', {
-    method:'POST',
-    headers:{'Content-Type':'application/x-www-form-urlencoded'},
-    body: new URLSearchParams({chat_id:CHAT, text:text, parse_mode:'HTML'})
+    method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body: new URLSearchParams({chat_id:CHAT, text, parse_mode:'HTML'})
   });
 }
-
-async function sendPhoto(photoUrl, caption){
+async function sendPhoto(photo, caption){
   await fetch('https://api.telegram.org/bot'+TOKEN+'/sendPhoto', {
-    method:'POST',
-    headers:{'Content-Type':'application/x-www-form-urlencoded'},
-    body: new URLSearchParams({chat_id:CHAT, photo:photoUrl, caption:caption.slice(0,1024), parse_mode:'HTML'})
+    method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body: new URLSearchParams({chat_id:CHAT, photo, caption:caption.slice(0,1024), parse_mode:'HTML'})
   });
 }
 
 async function sendSnapshot(){
-  const [stocks, cg, usd] = await Promise.all([
-    brapi(['IBOV','PETR4','VALE3','ITUB4','BBAS3']),
+  const [ibov,petr,vale,itub,bbas,cg,usd] = await Promise.all([
+    yh('^BVSP'), yh('PETR4.SA'), yh('VALE3.SA'), yh('ITUB4.SA'), yh('BBAS3.SA'),
     coingecko(), awesome()
   ]);
-  const ibov = stocks.IBOV, petr = stocks.PETR4, vale = stocks.VALE3, itub = stocks.ITUB4, bbas = stocks.BBAS3;
   const btc = cg.btc;
   const t = new Date(Date.now()-3*3600*1000).toISOString().slice(11,16);
-
   let txt = '📊 <b>SNAPSHOT — '+t+' BR</b>\n━━━━━━━━━━━━━━━━━━━\n\n';
   txt += '<b>📊 ÍNDICES</b>\n';
   txt += 'Ibov: '+intf(ibov?.p)+' pts '+pct(ibov?.c)+'\n';
@@ -106,57 +99,47 @@ async function sendSnapshot(){
   txt += 'VALE3: '+(vale?'R$ '+vale.p.toFixed(2):'-')+' '+pct(vale?.c)+'\n';
   txt += 'ITUB4: '+(itub?'R$ '+itub.p.toFixed(2):'-')+' '+pct(itub?.c)+'\n';
   txt += 'BBAS3: '+(bbas?'R$ '+bbas.p.toFixed(2):'-')+' '+pct(bbas?.c)+'\n\n';
-  txt += '🤖 <b>AGENTE IA</b>\n';
   const score = (ibov?.c||0) - (usd?.c||0)*0.5 + (btc?.c||0)*0.3;
-  if(score > 0.5) txt += '🟢 <b>TENDÊNCIA ALTA</b> — Procurar entrada em pullback';
-  else if(score < -0.5) txt += '🔴 <b>TENDÊNCIA QUEDA</b> — Defender posições';
-  else txt += '⚪ <b>LATERAL</b> — DCA funciona melhor';
+  txt += '🤖 <b>AGENTE IA</b>\n';
+  if(score>0.5) txt += '🟢 <b>TENDÊNCIA ALTA</b>';
+  else if(score<-0.5) txt += '🔴 <b>TENDÊNCIA QUEDA</b>';
+  else txt += '⚪ <b>LATERAL</b>';
   await send(txt);
 }
 
 async function sendNews(){
   const news = await getNews();
-  if(!news.length) return;
-  for(let i=0; i<Math.min(3, news.length); i++){
+  for(let i=0; i<news.length; i++){
     const n = news[i];
-    const cap = '📰 <b>NOTÍCIA '+(i+1)+'/'+Math.min(3,news.length)+'</b>\n━━━━━━━━━━━━━━━━━━━\n<b>'+n.title.slice(0,250)+'</b>\n\n📡 '+n.source+(n.link?'\n🔗 <a href="'+n.link+'">Ler matéria</a>':'');
-    if(n.image){
-      try{ await sendPhoto(n.image, cap); }catch(e){ await send(cap); }
-    } else {
-      await send(cap);
-    }
+    const cap = '📰 <b>NOTÍCIA '+(i+1)+'/'+news.length+'</b>\n━━━━━━━━━━━━━━━━━━━\n<b>'+n.title.slice(0,250)+'</b>\n\n📡 '+n.source+(n.link?'\n🔗 <a href="'+n.link+'">Ler matéria</a>':'');
+    if(n.image){ try{ await sendPhoto(n.image, cap); }catch(e){ await send(cap); } }
+    else await send(cap);
   }
 }
 
 async function sendChart(){
-  const stocks = await brapi(['PETR4','VALE3','ITUB4','BBAS3','MGLU3','WEGE3','BBDC4','ABEV3','ITSA4','BBSE3']);
-  const items = Object.entries(stocks).filter(([s,d])=>d.c!=null).sort((a,b)=>b[1].c-a[1].c);
+  const syms = ['PETR4.SA','VALE3.SA','ITUB4.SA','BBAS3.SA','MGLU3.SA','WEGE3.SA','BBDC4.SA','ABEV3.SA','ITSA4.SA','BBSE3.SA'];
+  const res = await Promise.all(syms.map(s=>yh(s)));
+  const items = syms.map((s,i)=>({sym:s.replace('.SA',''), d:res[i]})).filter(x=>x.d).sort((a,b)=>b.d.c-a.d.c);
   if(!items.length) return;
-  const labels = items.map(([s])=>s);
-  const data = items.map(([s,d])=>d.c.toFixed(2));
-  const colors = items.map(([s,d])=>d.c>=0?'#22c55e':'#ef4444');
   const cfg = {
     type:'horizontalBar',
-    data:{labels, datasets:[{label:'Variação %', data, backgroundColor:colors}]},
-    options:{
-      title:{display:true, text:'📊 VARIAÇÃO % POR AÇÃO HOJE', fontColor:'#d4af37', fontSize:18},
-      legend:{display:false},
-      scales:{xAxes:[{ticks:{fontColor:'#fff'}}], yAxes:[{ticks:{fontColor:'#fff'}}]},
-      plugins:{datalabels:{anchor:'end', align:'end', color:'#fff', font:{weight:'bold'}}}
-    }
+    data:{labels:items.map(x=>x.sym), datasets:[{data:items.map(x=>x.d.c.toFixed(2)), backgroundColor:items.map(x=>x.d.c>=0?'#22c55e':'#ef4444')}]},
+    options:{title:{display:true,text:'📊 VARIAÇÃO % HOJE',fontColor:'#d4af37',fontSize:18},legend:{display:false},
+      scales:{xAxes:[{ticks:{fontColor:'#fff'}}],yAxes:[{ticks:{fontColor:'#fff'}}]}}
   };
-  const chartUrl = 'https://quickchart.io/chart?bkg=%230a0a0a&w=800&h=500&c='+encodeURIComponent(JSON.stringify(cfg));
-  await sendPhoto(chartUrl, '📊 <b>DASHBOARD AO VIVO</b>\nVariação de hoje · 10 blue chips\n<i>Atualizado automaticamente</i>');
+  const url = 'https://quickchart.io/chart?bkg=%230a0a0a&w=800&h=500&c='+encodeURIComponent(JSON.stringify(cfg));
+  await sendPhoto(url, '📊 <b>DASHBOARD AO VIVO</b>\n'+items.length+' blue chips ranqueadas');
 }
 
 async function run(){
   const min = new Date().getUTCMinutes();
   await sendSnapshot();
-  if(min === 0 || min === 30) await sendNews();
-  if(min === 15 || min === 45) await sendChart();
+  if(min===0 || min===30) await sendNews();
+  if(min===15 || min===45) await sendChart();
 }
 
 export default {
   async fetch(){ await run(); return new Response('OK\n'); },
-  async scheduled(ev, env, ctx){ ctx.waitUntil(run()); }
+  async scheduled(ev,env,ctx){ ctx.waitUntil(run()); }
 };
