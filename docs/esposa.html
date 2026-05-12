@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>📲 Minhas Finanças — Tutorial Esposa</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,BlinkMacSystemFont,'Inter',sans-serif;background:linear-gradient(180deg,#0a0a0a 0%,#1a1408 100%);color:#fafafa;min-height:100vh;padding:0}
+.wrap{max-width:520px;margin:0 auto;padding:24px 18px}
+.hero{text-align:center;padding:24px 0 32px;position:relative}
+.hero::after{content:'';position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:60%;height:1px;background:linear-gradient(90deg,transparent,#d4af37,transparent)}
+.hero h1{font-family:Georgia,serif;font-size:32px;font-weight:900;background:linear-gradient(90deg,#d4af37,#f4d03f,#d4af37);background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:8px}
+.hero p{color:#a8a8a8;font-size:14px;line-height:1.5;padding:0 8px}
+.welcome{background:linear-gradient(135deg,rgba(212,175,55,.15),rgba(255,255,255,.02));padding:18px;border-radius:16px;border:1px solid rgba(212,175,55,.3);margin-bottom:28px;text-align:center}
+.welcome b{color:#d4af37;font-size:16px}
+.welcome p{margin-top:6px;font-size:13px;color:#c8c8c8;line-height:1.5}
+.tabs{display:flex;gap:6px;margin-bottom:18px;background:rgba(0,0,0,.4);padding:6px;border-radius:12px;border:1px solid #2a2a2a}
+.tab-btn{flex:1;padding:12px;border-radius:9px;font-size:13px;font-weight:800;border:none;background:transparent;color:#a8a8a8;cursor:pointer;transition:all .25s}
+.tab-btn.on{background:linear-gradient(135deg,#d4af37,#f4d03f);color:#000;box-shadow:0 4px 12px rgba(212,175,55,.4)}
+.section{display:none}
+.section.on{display:block;animation:fade .3s}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.step{display:flex;gap:14px;background:rgba(255,255,255,.04);padding:16px;border-radius:14px;margin-bottom:12px;border:1px solid rgba(212,175,55,.2)}
+.step-num{flex-shrink:0;width:36px;height:36px;background:linear-gradient(135deg,#d4af37,#f4d03f);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;color:#000;font-size:16px}
+.step-body{flex:1}
+.step-body b{color:#d4af37;display:block;margin-bottom:6px;font-size:14px;font-weight:800}
+.step-body p,.step-body span{font-size:13px;line-height:1.55;color:#d0d0d0}
+.step-body code{background:#1a1a1a;padding:3px 8px;border-radius:5px;font-size:12px;color:#d4af37;font-family:'SF Mono',Monaco,monospace}
+.btn{display:block;background:linear-gradient(135deg,#d4af37,#f4d03f);color:#000;padding:18px 22px;border-radius:14px;font-weight:900;font-size:16px;text-decoration:none;text-align:center;margin:14px 0;box-shadow:0 8px 24px rgba(212,175,55,.35)}
+.btn-tg{background:linear-gradient(135deg,#229ED9,#41a3d5);color:#fff;box-shadow:0 8px 24px rgba(34,158,217,.4)}
+.btn-pwa{background:linear-gradient(135deg,#22c55e,#34d399);color:#000;box-shadow:0 8px 24px rgba(34,197,94,.4)}
+.warning{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.35);color:#fcd34d;padding:14px;border-radius:12px;margin:14px 0;font-size:13px;line-height:1.5}
+.success{background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.35);color:#86efac;padding:14px;border-radius:12px;margin:14px 0;font-size:13px;line-height:1.5}
+.faq{background:rgba(255,255,255,.03);padding:14px;border-radius:12px;border:1px solid #2a2a2a;margin-bottom:8px}
+.faq b{color:#d4af37;display:block;margin-bottom:6px;font-size:13px}
+.faq p{font-size:12px;color:#b8b8b8;line-height:1.5}
+.divider{height:1px;background:linear-gradient(90deg,transparent,#d4af37,transparent);margin:28px 0;opacity:.5}
+.section-title{font-size:15px;font-weight:800;color:#d4af37;margin:24px 0 14px;text-transform:uppercase;letter-spacing:1px;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="hero">
+  <h1>💰 Minhas Finanças</h1>
+  <p>Seu agente financeiro pessoal — controla gastos, sugere investimentos, acompanha o mercado em tempo real.</p>
+</div>
+<div class="welcome">
+  <b>👋 Bem-vinda!</b>
+  <p>Esse é o aplicativo do Luan. Tem 3 jeitos de usar — escolha o que combina com seu celular abaixo.</p>
+</div>
+<div class="tabs">
+  <button class="tab-btn on" onclick="show(event,'android')">🤖 Android</button>
+  <button class="tab-btn" onclick="show(event,'ios')">🍎 iPhone</button>
+  <button class="tab-btn" onclick="show(event,'tg')">📲 Telegram</button>
+</div>
+
+<div id="android" class="section on">
+  <div class="section-title">Instalando no Android</div>
+  <div class="step"><div class="step-num">1</div><div class="step-body"><b>Toca no botão abaixo pra baixar</b><p>Vai baixar um arquivo .apk de 3 MB</p></div></div>
+  <a class="btn" href="apks/minhas-financas-v61.apk" download="minhas-financas.apk">📥 BAIXAR APP (3 MB)</a>
+  <div class="step"><div class="step-num">2</div><div class="step-body"><b>Se aparecer "arquivo perigoso"</b><p>É normal! Toca em <b>"Manter mesmo assim"</b>. O app é seguro, criado pelo Luan.</p></div></div>
+  <div class="step"><div class="step-num">3</div><div class="step-body"><b>Abre o arquivo baixado</b><p>Vai pra pasta <b>Downloads</b> e toca em <code>minhas-financas.apk</code>. Se pedir permissão pra "Instalar apps desconhecidos" — <b>Permita</b>.</p></div></div>
+  <div class="step"><div class="step-num">4</div><div class="step-body"><b>Instala e abre</b><p>Quando abrir, aceita o pedido de notificações. Pronto, tá funcionando! 🎉</p></div></div>
+  <div class="success"><b>✅ Pronto!</b><br>Você vai ver "Minhas Finanças v61" no topo. Notificações vão chegar automáticas durante o pregão.</div>
+</div>
+
+<div id="ios" class="section">
+  <div class="section-title">Instalando no iPhone</div>
+  <div class="warning"><b>⚠️ iPhone não suporta APK</b><br>Mas tem solução: instalar como app web (PWA) e usar o Telegram pra notificações.</div>
+  <div class="step"><div class="step-num">1</div><div class="step-body"><b>Abre o Safari</b><p>(Tem que ser Safari, não Chrome.)</p></div></div>
+  <div class="step"><div class="step-num">2</div><div class="step-body"><b>Cola esse link no Safari:</b><p><code>luanmatheus059.github.io/Agenda-apk-e-financias/financas/</code></p></div></div>
+  <a class="btn btn-pwa" href="https://luanmatheus059.github.io/Agenda-apk-e-financias/financas/">🌐 ABRIR APP NO SAFARI</a>
+  <div class="step"><div class="step-num">3</div><div class="step-body"><b>Toca no ícone "Compartilhar" (📤)</b><p>É aquele quadrado com seta pra cima no rodapé do Safari.</p></div></div>
+  <div class="step"><div class="step-num">4</div><div class="step-body"><b>Rola até "Adicionar à Tela de Início"</b><p>Toca → confirma → o app vai aparecer na tela inicial.</p></div></div>
+  <div class="step"><div class="step-num">5</div><div class="step-body"><b>Pra notificações: usa o Telegram</b><p>iPhone bloqueia notificações de PWA. Telegram funciona perfeito (próxima aba).</p></div></div>
+  <div class="success"><b>✅ App instalado!</b><br>Pra atualizações em tempo real do mercado, ativa o Telegram (aba ao lado).</div>
+</div>
+
+<div id="tg" class="section">
+  <div class="section-title">Notificações pelo Telegram</div>
+  <div class="welcome"><b>📲 Recomendado pra todos</b><p>Telegram funciona em Android e iPhone igual. Recebe atualizações do mercado a cada 5 minutos, 24/7.</p></div>
+  <div class="step"><div class="step-num">1</div><div class="step-body"><b>Baixa o Telegram</b><p>Se não tem ainda: Play Store ou App Store, procura "Telegram" — gratuito.</p></div></div>
+  <div class="step"><div class="step-num">2</div><div class="step-body"><b>Abre o bot do Luan</b><p>Toca no botão abaixo (ou procura no Telegram por <code>@luan_agente_xyz_bot</code>).</p></div></div>
+  <a class="btn btn-tg" href="https://t.me/luan_agente_xyz_bot">💬 ABRIR BOT NO TELEGRAM</a>
+  <div class="step"><div class="step-num">3</div><div class="step-body"><b>Toca em "START" ou "/start"</b><p>O bot vai te enviar mensagem de boas-vindas.</p></div></div>
+  <div class="step"><div class="step-num">4</div><div class="step-body"><b>Ativa notificações do Telegram</b><p>Configurações → Notificações → Telegram → <b>Permitir + Som + Tela bloqueada</b>.</p></div></div>
+  <div class="success"><b>✅ Você vai receber:</b><br>📊 Snapshot do mercado a cada 5 min<br>📰 Notícias econômicas com fotos<br>🎯 Sinais de compra/venda com análise<br>🏁 Resumo de fechamento todo dia 18h<br>₿ Cripto e dólar 24/7</div>
+</div>
+
+<div class="divider"></div>
+<div class="section-title">Perguntas Frequentes</div>
+<div class="faq"><b>❓ Vai consumir muito dado?</b><p>Não. ~5-10 MB por dia.</p></div>
+<div class="faq"><b>❓ É seguro?</b><p>Sim. Tudo armazenado só no seu celular. Sem rastreamento, sem propaganda. Criado pelo Luan.</p></div>
+<div class="faq"><b>❓ Como atualizar?</b><p>Quando sair versão nova, o Luan te avisa. Baixa de novo aqui e instala por cima.</p></div>
+<div class="faq"><b>❓ Não consigo instalar, deu erro</b><p>Manda print pro Luan que ele resolve.</p></div>
+
+<div class="divider"></div>
+<p style="text-align:center;font-size:11px;color:#666;padding:20px 0">Criado com 💛 pelo Luan · Versão 61 · Maio 2026</p>
+</div>
+<script>
+function show(ev, tab){
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('on'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('on'));
+  document.getElementById(tab).classList.add('on');
+  ev.target.classList.add('on');
+}
+</script>
+</body>
+</html>
