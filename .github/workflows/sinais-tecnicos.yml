@@ -1,0 +1,146 @@
+name: 🎯 Sinais técnicos 15min — Sala de sinais Telegram
+
+# Dispara análise técnica com RSI + médias móveis + detecção de setups
+# Roda a cada 15 min. Manda apenas se houver setup técnico relevante.
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+  repository_dispatch:
+    types: [signals]
+  push:
+    paths:
+      - '.github/workflows/sinais-tecnicos.yml'
+
+concurrency:
+  group: sinais-tecnicos
+  cancel-in-progress: false
+
+jobs:
+  signals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: 🎯 Análise técnica + Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN || '8224992163:AAF1B80laJI_P9Re4f6mcAU5F5DRnhmiYG4' }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID || '5933857921' }}
+        run: |
+          python3 <<'PY'
+          import json, os, urllib.request, urllib.parse, time
+          from datetime import datetime, timezone, timedelta
+
+          TOKEN = os.environ['TELEGRAM_BOT_TOKEN']
+          CHAT = os.environ['TELEGRAM_CHAT_ID']
+          BR = timezone(timedelta(hours=-3))
+          now = datetime.now(BR)
+          h, day = now.hour, now.weekday()
+          is_open = day <= 4 and 10 <= h < 18
+
+          def yh(sym, rng='15d', interval='1d'):
+              try:
+                  req = urllib.request.Request(f'https://query1.finance.yahoo.com/v8/finance/chart/{sym}?interval={interval}&range={rng}', headers={'User-Agent':'Mozilla/5.0'})
+                  d = json.loads(urllib.request.urlopen(req, timeout=10).read())
+                  r = d['chart']['result'][0]
+                  m = r['meta']
+                  closes = [c for c in r['indicators']['quote'][0]['close'] if c is not None]
+                  return m.get('regularMarketPrice'), m.get('chartPreviousClose'), closes
+              except: return None, None, []
+
+          def rsi(closes, period=14):
+              if len(closes) < period+1: return None
+              gains, losses = [], []
+              for i in range(1, len(closes)):
+                  diff = closes[i] - closes[i-1]
+                  gains.append(max(diff, 0))
+                  losses.append(max(-diff, 0))
+              avg_g = sum(gains[-period:])/period
+              avg_l = sum(losses[-period:])/period
+              if avg_l == 0: return 100
+              return 100 - (100/(1 + avg_g/avg_l))
+
+          def sma(closes, period):
+              if len(closes) < period: return None
+              return sum(closes[-period:])/period
+
+          def send(text):
+              data = urllib.parse.urlencode({'chat_id': CHAT, 'text': text, 'parse_mode': 'HTML', 'disable_web_page_preview': 'true'}).encode()
+              try:
+                  r = json.loads(urllib.request.urlopen(urllib.request.Request(f'https://api.telegram.org/bot{TOKEN}/sendMessage', data=data), timeout=10).read())
+                  return r.get('ok')
+              except Exception as e:
+                  print('TG err:', e); return False
+
+          # ────── Detecta setups técnicos nas ações BR ──────
+          ATIVOS = ['PETR4.SA','VALE3.SA','ITUB4.SA','BBAS3.SA','MGLU3.SA','WEGE3.SA','BBDC4.SA','ABEV3.SA','ITSA4.SA','BBSE3.SA','TAEE11.SA','VIVT3.SA','RENT3.SA','SUZB3.SA','EGIE3.SA','PRIO3.SA']
+
+          sinais = []
+          for sym in ATIVOS:
+              p, pr, closes = yh(sym, '60d', '1d')
+              if not p or len(closes) < 20: continue
+              r = rsi(closes)
+              s20 = sma(closes, 20)
+              s50 = sma(closes, 50) if len(closes) >= 50 else None
+              chg = (p-pr)/pr*100 if pr else 0
+              name = sym.replace('.SA','')
+              setup, desc = None, None
+
+              if r and r < 30 and chg < -1.5:
+                  setup, desc = '🟢 COMPRA — sobrevenda', f'RSI {r:.0f} (<30) + queda {chg:.1f}%. Reversão técnica provável.'
+              elif r and r > 75 and chg > 1.5:
+                  setup, desc = '🔴 ZONA DE TOPO', f'RSI {r:.0f} (>75) + alta {chg:.1f}%. Correção provável.'
+              elif s20 and s50 and s20 > s50*1.005 and p > s20 and chg > 1:
+                  setup, desc = '🟢 TENDÊNCIA ALTA', f'Preço acima MM20 e MM50 alinhadas. Confirmação alta.'
+              elif s20 and s50 and s20 < s50*0.995 and p < s20 and chg < -1:
+                  setup, desc = '🔴 TENDÊNCIA QUEDA', f'Preço abaixo MM20 e MM50. Fraqueza confirmada.'
+
+              if setup:
+                  if '🟢' in setup:
+                      stop = round(p*0.97, 2); target = round(p*1.05, 2)
+                      rr = round((target-p)/(p-stop), 2) if p > stop else 0
+                  else:
+                      stop = round(p*1.03, 2); target = round(p*0.95, 2)
+                      rr = round((p-target)/(stop-p), 2) if stop > p else 0
+                  sinais.append({'sym':name,'p':p,'chg':chg,'rsi':r,'setup':setup,'desc':desc,'stop':stop,'target':target,'rr':rr})
+
+          # Manda apenas se há sinais
+          if sinais:
+              msg = f"""🎯 <b>SALA DE SINAIS — {now.strftime('%H:%M')} BR</b>
+          ━━━━━━━━━━━━━━━━━━━
+
+          🔍 <b>{len(sinais)} setup(s) detectado(s)</b>
+          Análise: RSI + MM20 + MM50
+
+          """
+              for s in sinais[:6]:
+                  msg += f"""<b>{s['sym']}</b> · R$ {s['p']:.2f} {('🟢 +' if s['chg']>=0 else '🔴 ')}{s['chg']:.2f}%
+          {s['setup']}
+          RSI: {s['rsi']:.0f}
+          <i>{s['desc']}</i>
+          💰 Entry: R$ {s['p']:.2f}
+          🛑 Stop: R$ {s['stop']:.2f}
+          🎯 Alvo: R$ {s['target']:.2f}
+          ⚖️ R/R: 1:{s['rr']}
+
+          """
+              msg += "⚠️ <i>EDUCACIONAL. Sempre use stop loss. Risco máximo 2% do capital.</i>"
+              send(msg)
+              print(f'Enviados {len(sinais)} sinais')
+          else:
+              # Se não há setups, manda mini-update de mercado pra mostrar que tá vivo
+              btc, btcp, _ = yh('BTC-USD', '1d', '1h')
+              btc_chg = (btc-btcp)/btcp*100 if btc and btcp else 0
+              if is_open:
+                  msg = f"""📊 <b>MERCADO {now.strftime('%H:%M')} — sem setups novos</b>
+
+          Mercado equilibrado nesse momento. Sem sinais de entrada técnica clara.
+
+          ₿ BTC: US$ {f"{btc:,.0f}".replace(',','.') if btc else '-'} ({btc_chg:+.2f}%)
+
+          <i>Próxima análise técnica em 15min.</i>"""
+                  send(msg)
+                  print('Mini snapshot enviado (sem sinais)')
+              else:
+                  print('Fora pregão sem setups - skip')
+          PY
