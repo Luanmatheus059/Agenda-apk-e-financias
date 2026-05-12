@@ -1371,6 +1371,8 @@ async function fetchAllNews(){
 }
 
 // ─── Universo de ativos com DY (DY médio histórico, dados públicos B3) ───
+// Lista de ativos com DY histórico médio.
+// Preços são ATUALIZADOS EM TEMPO REAL via Yahoo Finance ao abrir a aba Investir.
 const ATIVOS_INVESTIR = {
   acoes: [
     {sym:'ITSA4', name:'Itaúsa', dy:7.5, p:11.20, set:'Financeiro', desc:'Holding do Itaú, paga dividendos mensalmente. Empresa robusta, baixo risco entre as ações.'},
@@ -1416,7 +1418,33 @@ function calcDividendos(qtde, preco, dyAnual){
   return {investido:totalInvestido, anual:divAnualTotal, mensal:divMensal};
 }
 
+// Atualiza preços de ATIVOS_INVESTIR em tempo real via Yahoo Finance
+let _investirLastUpdate = 0;
+async function updateInvestirPrices(force){
+  if(!force && (Date.now()-_investirLastUpdate) < 60_000) return; // cache 1min
+  _investirLastUpdate = Date.now();
+  const all = [...ATIVOS_INVESTIR.acoes, ...ATIVOS_INVESTIR.fii, ...ATIVOS_INVESTIR.fiagro];
+  const updates = await Promise.all(all.map(async (a)=>{
+    const q = await yahooQuote(a.sym+'.SA');
+    if(q){
+      a.p = q.price;
+      a.chgDay = q.chg;
+      // Atualiza DY usando preço atual (mantém div anual histórica)
+      if(a._divAnualHistorico){
+        a.dy = (a._divAnualHistorico / q.price) * 100;
+      } else {
+        a._divAnualHistorico = a.p * (a.dy/100); // calcula div anual inicial
+      }
+    }
+    return a;
+  }));
+  console.log('💎 Investir: preços atualizados ('+updates.filter(x=>x.chgDay!==undefined).length+'/'+all.length+')');
+  if(S.tab===4) render();
+}
+
 function renderInvestirTab(ct){
+  // Dispara update de preços em background (não bloqueia render)
+  updateInvestirPrices().catch(e=>console.warn('investir update',e));
   // Sub-tabs
   const sub = S.invSub || 'visao';
   const subs = [
@@ -1545,9 +1573,11 @@ function renderInvestirTab(ct){
                 h('div',{style:{fontSize:'10px',color:'var(--text3)'}},'DY anual')
               )
             ),
-            h('div',{style:{display:'flex',gap:'6px',marginTop:'8px',flexWrap:'wrap'}},
+            h('div',{style:{display:'flex',gap:'6px',marginTop:'8px',flexWrap:'wrap',alignItems:'center'}},
               h('span',{className:'pill'},'R$ '+a.p.toFixed(2)),
-              h('span',{className:'pill',style:{background:'rgba(34,197,94,.15)',color:'#22c55e'}},'R$ '+(a.p*a.dy/100/12).toFixed(2)+'/mês por cota')
+              a.chgDay !== undefined ? h('span',{className:'pill',style:{background:a.chgDay>=0?'rgba(34,197,94,.18)':'rgba(239,68,68,.18)',color:a.chgDay>=0?'#22c55e':'#ef4444'}},(a.chgDay>=0?'▲ +':'▼ ')+a.chgDay.toFixed(2)+'%') : h('span',{className:'pill',style:{opacity:'.5'}},'...'),
+              h('span',{className:'pill',style:{background:'rgba(212,175,55,.18)',color:'#d4af37'}},'R$ '+(a.p*a.dy/100/12).toFixed(2)+'/mês'),
+              a.chgDay !== undefined ? h('span',{style:{fontSize:'9px',color:'#22c55e',fontWeight:'800',letterSpacing:'.5px',marginLeft:'auto'}},'● AO VIVO') : null
             )
           )
         ),
@@ -2535,7 +2565,14 @@ function h(t,p,...c){
   c.flat(9).forEach(x=>{if(x!=null)el.append(typeof x==='string'||typeof x==='number'?document.createTextNode(x):x)});
   return el;
 }
-function inp(v,ph,fn,ex={}){return h('input',{value:v||'',placeholder:ph,...ex,on:{input:e=>fn(e.target.value),change:e=>fn(e.target.value)}})}
+// inp = input que SÓ salva ao SAIR do campo (evita re-render destruir foco).
+// Usa change (blur) + Enter, em vez de input (cada keystroke).
+function inp(v,ph,fn,ex={}){
+  return h('input',{value:v||'',placeholder:ph,...ex,on:{
+    change:e=>fn(e.target.value),
+    keydown:e=>{ if(e.key==='Enter'){ e.target.blur(); } }
+  }});
+}
 function sel(v,opts,fn,ph='—'){const s=h('select',{on:{change:e=>fn(e.target.value)}});s.append(h('option',{value:''},ph));opts.forEach(o=>{const op=h('option',{value:o},o);if(o===v)op.selected=true;s.append(op)});return s}
 
 // ─── Sugestões inteligentes ───
@@ -3151,19 +3188,32 @@ function render(){
     });
 
     // ─── Mini-gráficos auto-rotate (cycle automático na watchlist) ───
+    // Mapeia símbolo pra formato TradingView correto (B3, BINANCE, FX)
+    const tvSym = (s)=>{
+      const sym = String(s||'').toUpperCase().replace(/[^A-Z0-9-]/g,'');
+      if(!sym) return 'BMFBOVESPA:PETR4';
+      if(sym==='BTC' || sym==='BITCOIN') return 'BINANCE:BTCUSDT';
+      if(sym==='ETH' || sym==='ETHEREUM') return 'BINANCE:ETHUSDT';
+      if(sym.includes('USD-BRL') || sym==='USDBRL') return 'FX_IDC:USDBRL';
+      if(sym.includes('EUR-BRL') || sym==='EURBRL') return 'FX_IDC:EURBRL';
+      if(sym==='IBOV' || sym==='BVSP') return 'BMFBOVESPA:IBOV';
+      // Padrão: ação BR
+      return 'BMFBOVESPA:'+sym.replace(/-/g,'');
+    };
     const cycleSym = S.watchlist[ (Math.floor(Date.now()/12000) % S.watchlist.length) ] || 'PETR4';
+    const tvCycleSym = tvSym(cycleSym);
     ct.append(h('div',{className:'card'},
       h('div',{style:{display:'flex',alignItems:'center',gap:'8px',marginBottom:'8px'}},
         h('span',{className:'pulse'}),
         h('h3',{style:{margin:0}},'🔄 Auto-Rotate'),
         h('span',{className:'live-badge'},'AO VIVO'),
-        h('span',{style:{marginLeft:'auto',fontSize:'11px',color:'var(--text3)'}},cycleSym)
+        h('span',{style:{marginLeft:'auto',fontSize:'11px',color:'var(--gold)',fontWeight:'800'}},cycleSym)
       ),
-      h('p',{style:{fontSize:'10px',color:'var(--text3)',marginBottom:'8px'}},'Cicla pelos ativos da sua watchlist a cada 12s. Sem precisar tocar em nada.'),
+      h('p',{style:{fontSize:'10px',color:'var(--text3)',marginBottom:'8px'}},'Cicla pelos ativos da watchlist a cada 12s. Sem tocar em nada.'),
       h('div',{id:'tv-mini',style:{height:'220px'}})
     ));
     injectTV('tv-mini','https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js',{
-      symbol:'BMFBOVESPA:'+cycleSym.replace(/[^A-Z0-9]/g,''),
+      symbol:tvCycleSym,
       width:'100%',
       height:220,
       locale:'br',
