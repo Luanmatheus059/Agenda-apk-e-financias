@@ -1,15 +1,18 @@
-name: 📊 Snapshot 30min — Telegram garantido
+name: 📊 Snapshot 5min — Telegram garantido
 
-# Manda snapshot do mercado a cada 30 min, INDEPENDENTE de setup detectado.
+# Manda snapshot do mercado a cada 5 min (mínimo do GitHub Actions).
 # Garante fluxo contínuo de mensagens no Telegram.
 
 on:
   schedule:
-    - cron: '*/30 * * * *'  # a cada 30 min
+    - cron: '*/5 * * * *'  # a cada 5 min (limite mínimo do GitHub)
   workflow_dispatch:
+  # Webhook externo (cron-job.org etc) dispara via /dispatches
+  repository_dispatch:
+    types: [snapshot]
 
 concurrency:
-  group: snapshot-30min
+  group: snapshot-5min
   cancel-in-progress: false
 
 jobs:
@@ -90,7 +93,7 @@ jobs:
                   msg += "\n🔴 <b>TENDÊNCIA QUEDA</b> — Defender posições, evitar alavancagem."
               else:
                   msg += "\n⚪ <b>LATERALIDADE</b> — DCA funciona melhor."
-              msg += f"\n\n<i>Próximo update em 30min.</i>"
+              msg += f"\n\n<i>Próximo update em 5min.</i>"
 
           else:
               # Fora pregão → cripto + forex (24/7)
@@ -115,7 +118,7 @@ jobs:
           ⏰ <b>PRÓXIMO PREGÃO BR</b>
           Abre às 10h00, fecha às 17h00 (BRT).
 
-          <i>Próximo update em 30min.</i>"""
+          <i>Próximo update em 5min.</i>"""
 
           ok = send(msg)
           print('Enviado:' if ok else 'FALHOU:', now.isoformat())
