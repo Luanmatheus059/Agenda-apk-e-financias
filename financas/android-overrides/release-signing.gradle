@@ -1,8 +1,8 @@
 // Snippet apêndice ao android/app/build.gradle pra produzir APK release assinado.
 android {
     defaultConfig {
-        versionCode 59
-        versionName "59.0"
+        versionCode 60
+        versionName "60.0"
     }
     signingConfigs {
         release {
