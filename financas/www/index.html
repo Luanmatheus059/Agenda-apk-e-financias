@@ -235,8 +235,71 @@ button:active{transform:scale(.97)}
 .setup-card.special::before{background:linear-gradient(180deg,var(--gold),var(--gold-light));box-shadow:var(--glow-gold)}
 /* Header dourado discreto em divisores */
 hr,.divider{border:none;height:1px;background:linear-gradient(90deg,transparent,var(--border-gold),transparent);margin:14px 0}
-/* Gold accent na seleção */
 ::selection{background:var(--gold);color:#0a0a0a}
+
+/* ═══ SAAS PREMIUM UPGRADES ═══ */
+
+/* Glassmorphism reforçado nos cards */
+.card{backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+
+/* Animação de entrada com translateY (parallax) */
+@keyframes saasIn{
+  from{opacity:0;transform:translateY(20px) scale(.97)}
+  to{opacity:1;transform:translateY(0) scale(1)}
+}
+.card{animation:saasIn .45s cubic-bezier(0.16,1,0.3,1) backwards}
+.card:nth-child(1){animation-delay:0s}
+.card:nth-child(2){animation-delay:.05s}
+.card:nth-child(3){animation-delay:.1s}
+.card:nth-child(4){animation-delay:.15s}
+.card:nth-child(5){animation-delay:.2s}
+.card:nth-child(n+6){animation-delay:.25s}
+
+/* Hover lift suave (paralax 3D) */
+.market-card,.tip,.item{transition:transform .25s cubic-bezier(0.4,0,0.2,1), border-color .25s, box-shadow .25s; will-change:transform}
+.market-card:hover,.tip:hover{transform:translateY(-3px); box-shadow:0 12px 32px rgba(212,175,55,.15)}
+
+/* Sparkline animation (line draw) */
+@keyframes drawLine{from{stroke-dashoffset:200}to{stroke-dashoffset:0}}
+.sparkline-path{stroke-dasharray:200;animation:drawLine 1s ease-out forwards}
+
+/* Pulse mais elegante */
+.pulse{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--gold);position:relative}
+.pulse::before{content:'';position:absolute;inset:-4px;border-radius:50%;background:inherit;opacity:.4;animation:pulseRing 1.5s cubic-bezier(0.4,0,0.6,1) infinite}
+@keyframes pulseRing{0%{transform:scale(1);opacity:.7}100%{transform:scale(2.2);opacity:0}}
+
+/* Live badge mais polido */
+.live-badge{display:inline-flex;align-items:center;gap:4px;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;font-size:9px;padding:3px 8px;border-radius:8px;font-weight:900;letter-spacing:.8px;animation:liveBlink 2s ease-in-out infinite}
+.live-badge::before{content:'';display:inline-block;width:5px;height:5px;border-radius:50%;background:#fff}
+@keyframes liveBlink{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.5)}50%{box-shadow:0 0 0 6px rgba(239,68,68,0)}}
+
+/* Skeleton loading */
+.skeleton{background:linear-gradient(90deg,#1a1a1a 0%,#2a2a2a 50%,#1a1a1a 100%);background-size:200% 100%;animation:skel 1.5s ease-in-out infinite;border-radius:8px}
+@keyframes skel{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+/* Hero balance card — parallax interno aprimorado */
+.hero-balance{transform-style:preserve-3d;perspective:1000px}
+.hero-amount{filter:drop-shadow(0 4px 20px rgba(212,175,55,.3))}
+
+/* Sparkline component (mini gráfico inline) */
+.sparkline{display:inline-block;vertical-align:middle;margin-left:6px}
+.sparkline svg{display:block}
+
+/* Glow sutil nos KPIs */
+.mc:hover{transform:translateY(-2px);border-color:var(--border-gold);box-shadow:0 8px 24px rgba(212,175,55,.12)}
+.mc{transition:all .25s cubic-bezier(0.4,0,0.2,1)}
+
+/* Botões com gradient mais profundo */
+.btn-o:hover{box-shadow:0 12px 32px rgba(212,175,55,.45)}
+.btn-g:hover{box-shadow:0 12px 32px rgba(0,217,126,.45)}
+.btn-purple:hover{box-shadow:0 12px 32px rgba(168,85,247,.45)}
+.btn-r:hover{box-shadow:0 12px 32px rgba(255,59,59,.45)}
+
+/* Scroll smooth */
+html{scroll-behavior:smooth}
+
+/* Tab bar com fade nas bordas (sugere mais conteúdo lateral) */
+.tabs{mask-image:linear-gradient(90deg,transparent 0,#000 8px,#000 calc(100% - 16px),transparent 100%);-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 8px,#000 calc(100% - 16px),transparent 100%)}
 </style>
 </head>
 <body>
@@ -1988,7 +2051,39 @@ async function chatRespond(question){
   if(S.deepseekKey){
     try{
       const tE=tot(S.ent), tS=tot(S.sai), saldo=tE-tS;
-      const context = `Usuário tem saldo ${fmt(saldo)}, receitas ${fmt(tE)}, despesas ${fmt(tS)}, perfil ${S.perfilInv||'moderado'}. Responda em PT-BR, simples, sem jargão técnico, didático. Foco educacional. Sempre lembre que não é recomendação.`;
+      const ind = S.market.indices||[];
+      const stocks = S.market.stocks||[];
+      const ibov = ind.find(i=>i.symbol==='IBOV');
+      const usd = ind.find(i=>String(i.symbol).includes('USD'));
+      const btc = ind.find(i=>i.symbol==='BTC');
+      const news = (S.news||[]).slice(0,5).map(n=>'- '+n.title).join('\n');
+      const stocksTxt = stocks.slice(0,8).map(s=>`${s.symbol}: R$${s.price?.toFixed(2)} (${s.chg>=0?'+':''}${s.chg?.toFixed(2)}%)`).join(', ');
+      const context = `Você é um assistente financeiro especialista no mercado brasileiro. Sabe tudo sobre: ações, FIIs, FIAGROs, Tesouro, CDBs, LCIs, criptos, análise técnica/fundamentalista, gestão de risco, planejamento financeiro.
+
+CONTEXTO DO USUÁRIO:
+- Nome: ${S.userName||'Usuário'}
+- Receitas mês: ${fmt(tE)}
+- Despesas mês: ${fmt(tS)}
+- Saldo: ${fmt(saldo)}
+- Perfil de risco: ${S.perfilInv||'moderado'}
+- % renda pra investir: ${S.invPct||10}%
+
+MERCADO AGORA (em tempo real):
+- Ibovespa: ${ibov?Math.round(ibov.price)+' pts ('+ibov.chg.toFixed(2)+'%)':'-'}
+- USD/BRL: ${usd?'R$'+usd.price.toFixed(4)+' ('+usd.chg.toFixed(2)+'%)':'-'}
+- Bitcoin: ${btc?'US$'+Math.round(btc.price)+' ('+btc.chg.toFixed(2)+'%)':'-'}
+- Watchlist: ${stocksTxt}
+
+NOTÍCIAS RECENTES (PT-BR):
+${news || '(carregando...)'}
+
+REGRAS DA RESPOSTA:
+1. Responda em PT-BR brasileiro, simples, sem jargão técnico desnecessário.
+2. Use exemplos com os dados ATUAIS (preços reais que mostrei acima).
+3. Foco educacional. Cite valores concretos quando ajudar.
+4. Sempre lembre que não é recomendação de investimento.
+5. Se a pergunta é sobre um ativo específico, use os dados reais dele.
+6. Máximo 4-5 parágrafos.`;
       const res = await fetch('https://api.deepseek.com/v1/chat/completions',{
         method:'POST',
         headers:{'Content-Type':'application/json','Authorization':'Bearer '+S.deepseekKey},
@@ -2052,18 +2147,137 @@ async function chatRespond(question){
 // ═══ ESTUDOS TAB ═══
 // Material educacional em PT-BR
 function renderEstudosTab(ct){
-  const sub = S.estudosSub || 'basico';
+  // Auto-fetch market e news pra Estudos ao vivo
+  if(!(S.market.indices||[]).length) fetchMarket(true);
+  if(!(S.news||[]).length) fetchAllNews();
+
+  const sub = S.estudosSub || 'aovivo';
   const subs = [
+    {k:'aovivo',l:'⚡ Ao Vivo'},
     {k:'basico',l:'🎓 Básico'},
     {k:'intermediario',l:'📊 Intermediário'},
     {k:'avancado',l:'⚡ Avançado'},
     {k:'glossario',l:'📖 Glossário'}
   ];
-  const bar = h('div',{className:'subtabs'});
+  const bar = h('div',{className:'subtabs',style:{overflowX:'auto',scrollbarWidth:'none'}});
   for(const s of subs){
-    bar.append(h('button',{className:'subtab'+(sub===s.k?' on':''),on:{click:()=>{S.estudosSub=s.k;render()}}},s.l));
+    bar.append(h('button',{className:'subtab'+(sub===s.k?' on':''),style:{flexShrink:'0',minWidth:'auto',padding:'10px 14px'},on:{click:()=>{S.estudosSub=s.k;render()}}},s.l));
   }
   ct.append(bar);
+
+  // ═══ AO VIVO — Mercado e estudos em tempo real ═══
+  if(sub==='aovivo'){
+    const ind = S.market.indices||[];
+    const stocks = S.market.stocks||[];
+    const news = S.news||[];
+    const ibov = ind.find(i=>i.symbol==='IBOV');
+    const usd = ind.find(i=>String(i.symbol).includes('USD'));
+    const btc = ind.find(i=>i.symbol==='BTC');
+
+    // Hero ao vivo
+    ct.append(h('div',{className:'card',style:{background:'linear-gradient(135deg,#7c3aed,#5b21b6)',border:'none',color:'#fff',padding:'18px'}},
+      h('div',{style:{display:'flex',alignItems:'center',gap:'10px',marginBottom:'10px'}},
+        h('span',{className:'pulse',style:{background:'#fff'}}),
+        h('div',null,
+          h('div',{style:{fontSize:'17px',fontWeight:'900'}},'📡 Mercado em Tempo Real'),
+          h('div',{style:{fontSize:'11px',opacity:'.85'}},'Acompanhamento ao vivo · '+new Date().toLocaleTimeString('pt-BR'))
+        )
+      ),
+      h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'8px'}},
+        h('div',{style:{padding:'10px',background:'rgba(0,0,0,.25)',borderRadius:'10px'}},
+          h('div',{style:{fontSize:'10px',opacity:'.7',fontWeight:'700'}},'IBOVESPA'),
+          h('div',{style:{fontSize:'14px',fontWeight:'900',marginTop:'2px'}},ibov?Math.round(ibov.price).toLocaleString('de-DE'):'-'),
+          h('div',{style:{fontSize:'11px',color:ibov?.chg>=0?'#22c55e':'#ef4444',fontWeight:'800'}},ibov?(ibov.chg>=0?'▲ +':'▼ ')+ibov.chg.toFixed(2)+'%':'-')
+        ),
+        h('div',{style:{padding:'10px',background:'rgba(0,0,0,.25)',borderRadius:'10px'}},
+          h('div',{style:{fontSize:'10px',opacity:'.7',fontWeight:'700'}},'USD/BRL'),
+          h('div',{style:{fontSize:'14px',fontWeight:'900',marginTop:'2px'}},usd?'R$ '+usd.price.toFixed(4):'-'),
+          h('div',{style:{fontSize:'11px',color:usd?.chg>=0?'#22c55e':'#ef4444',fontWeight:'800'}},usd?(usd.chg>=0?'▲ +':'▼ ')+usd.chg.toFixed(2)+'%':'-')
+        ),
+        h('div',{style:{padding:'10px',background:'rgba(0,0,0,.25)',borderRadius:'10px'}},
+          h('div',{style:{fontSize:'10px',opacity:'.7',fontWeight:'700'}},'BITCOIN'),
+          h('div',{style:{fontSize:'14px',fontWeight:'900',marginTop:'2px'}},btc?'$'+Math.round(btc.price/1000)+'k':'-'),
+          h('div',{style:{fontSize:'11px',color:btc?.chg>=0?'#22c55e':'#ef4444',fontWeight:'800'}},btc?(btc.chg>=0?'▲ +':'▼ ')+btc.chg.toFixed(2)+'%':'-')
+        )
+      )
+    ));
+
+    // Análise tipo "investing.com" — narrativa do dia
+    const sortedAlta = [...stocks].sort((a,b)=>b.chg-a.chg).slice(0,3);
+    const sortedQueda = [...stocks].sort((a,b)=>a.chg-b.chg).slice(0,3);
+    const moodEmoji = (ibov?.chg||0) > 0.5 ? '🟢' : (ibov?.chg||0) < -0.5 ? '🔴' : '🟡';
+    const moodTxt = (ibov?.chg||0) > 0.5 ? 'Otimismo predomina' : (ibov?.chg||0) < -0.5 ? 'Cautela domina' : 'Mercado lateralizado';
+
+    ct.append(h('div',{className:'card'},
+      h('h3',{style:{margin:'0 0 10px'}},'📊 Como está o mercado HOJE'),
+      h('div',{style:{padding:'12px',background:'linear-gradient(135deg,rgba(212,175,55,.08),transparent)',borderRadius:'10px',marginBottom:'12px'}},
+        h('div',{style:{fontSize:'14px',fontWeight:'800',marginBottom:'6px'}},moodEmoji+' '+moodTxt),
+        h('div',{style:{fontSize:'12px',color:'var(--text2)',lineHeight:'1.5'}},
+          (ibov?.chg||0) > 0.5 ? `O Ibovespa avança ${ibov.chg.toFixed(2)}%, sinal de apetite por risco. Investidores estrangeiros tendem a entrar em bolsa quando o dólar cai e as ações sobem juntas — é o caso agora.` :
+          (ibov?.chg||0) < -0.5 ? `O Ibovespa recua ${Math.abs(ibov.chg).toFixed(2)}%. Em quedas, defesa é a palavra: rever stops, evitar entradas agressivas. Lembre-se: drawdown faz parte.` :
+          'Mercado sem direção clara. Em lateralidade, o melhor é DCA (compras programadas) ou aguardar definição. Não tente prever quando vai romper.'
+        )
+      ),
+      sortedAlta.length ? h('div',{style:{marginBottom:'10px'}},
+        h('div',{style:{fontSize:'11px',fontWeight:'800',color:'#22c55e',marginBottom:'6px',letterSpacing:'.5px'}},'🚀 MAIORES ALTAS HOJE'),
+        ...sortedAlta.map(s=>h('div',{style:{padding:'8px 12px',background:'rgba(34,197,94,.08)',borderRadius:'8px',marginBottom:'4px',display:'flex',justifyContent:'space-between',fontSize:'12px'}},
+          h('span',{style:{fontWeight:'800'}},s.symbol),
+          h('span',{style:{color:'#22c55e',fontWeight:'800'}},'▲ +'+s.chg.toFixed(2)+'%')
+        ))
+      ) : null,
+      sortedQueda.length ? h('div',null,
+        h('div',{style:{fontSize:'11px',fontWeight:'800',color:'#ef4444',marginBottom:'6px',letterSpacing:'.5px'}},'📉 MAIORES QUEDAS HOJE'),
+        ...sortedQueda.map(s=>h('div',{style:{padding:'8px 12px',background:'rgba(239,68,68,.08)',borderRadius:'8px',marginBottom:'4px',display:'flex',justifyContent:'space-between',fontSize:'12px'}},
+          h('span',{style:{fontWeight:'800'}},s.symbol),
+          h('span',{style:{color:'#ef4444',fontWeight:'800'}},'▼ '+s.chg.toFixed(2)+'%')
+        ))
+      ) : null
+    ));
+
+    // Conceitos aplicados ao dia
+    ct.append(h('div',{className:'card'},
+      h('h3',{style:{margin:'0 0 10px'}},'🧠 Aprenda com o que está acontecendo'),
+      h('div',{className:'tip'},
+        h('div',{className:'tip-ic'},'💎'),
+        h('div',{className:'tip-body'},
+          h('b',null,'Dividend Yield AO VIVO'),
+          'ITSA4 (Itaúsa) custa hoje R$11. Paga ~R$0,90/ano em dividendos → DY '+(0.90/11*100).toFixed(1)+'%. Comprou 100 cotas (R$1.100)? Recebe ~R$90/ano = ~R$7,50/mês passivo.'
+        )
+      ),
+      h('div',{className:'tip'},
+        h('div',{className:'tip-ic'},'📊'),
+        h('div',{className:'tip-body'},
+          h('b',null,'Beta do Ibovespa hoje'),
+          (ibov?.chg||0)>0 ? `Quando Ibov sobe ${ibov.chg.toFixed(2)}%, ações com Beta 1.5 (tipo Magalu) sobem ~${(ibov.chg*1.5).toFixed(2)}%, e Beta 0.5 (Vivo, Engie) só ~${(ibov.chg*0.5).toFixed(2)}%.` : `Quando Ibov cai ${(ibov?.chg||0).toFixed(2)}%, ações de alto Beta caem mais. Ações defensivas (Beta < 0.7) protegem em quedas.`
+        )
+      ),
+      h('div',{className:'tip'},
+        h('div',{className:'tip-ic'},'💱'),
+        h('div',{className:'tip-body'},
+          h('b',null,'Dólar e Ibovespa hoje'),
+          (usd?.chg||0) > 0 ? `Dólar subiu ${usd.chg.toFixed(2)}%. Tradicionalmente, dólar alto pressiona Ibov (commodities exportadoras como Vale e Petro sobem, mas empresas que importam caem).` : `Dólar caiu ${Math.abs(usd?.chg||0).toFixed(2)}%. Bom pra empresas importadoras (Magalu, Mercado Livre). Estrangeiros tendem a comprar bolsa quando dólar cai.`
+        )
+      )
+    ));
+
+    // Notícias top do momento (curadas pra estudo)
+    if(news.length){
+      ct.append(h('div',{className:'card'},
+        h('h3',{style:{margin:'0 0 10px'}},'📰 Notícias do dia + contexto educacional'),
+        ...news.slice(0,3).map((n,i)=>{
+          const sent = n.sentiment || {label:'NEUTRO',color:'#9ca3af',emoji:'⚪'};
+          return h('div',{style:{padding:'10px',background:'rgba(0,0,0,.25)',borderRadius:'10px',marginBottom:'8px',borderLeft:'3px solid '+sent.color}},
+            h('div',{style:{fontSize:'10px',color:sent.color,fontWeight:'800',marginBottom:'4px'}},sent.emoji+' '+sent.label),
+            h('div',{style:{fontSize:'12px',fontWeight:'700',marginBottom:'4px'}},n.title),
+            h('div',{style:{fontSize:'10px',color:'var(--text3)'}},n.source+' · '+new Date(n.date).toLocaleTimeString('pt-BR'))
+          );
+        }),
+        h('button',{className:'btn btn-purple',style:{width:'100%',marginTop:'8px'},on:{click:()=>{S.tab=7;fetchAllNews();render()}}},'Ver todas as notícias')
+      ));
+    }
+
+    return; // não mostra estudos estáticos
+  }
 
   const ESTUDOS = {
     basico: [
@@ -3145,6 +3359,9 @@ function render(){
     ));
   })();
 
+  // Preserva scroll position da tab bar pra evitar voltar pro Painel ao trocar tab
+  const _prevTabsScroll = (document.querySelector('.tabs')?.scrollLeft) || 0;
+
   const tabs=h('div',{className:'tabs'});
   ['📊 Painel','💰 Entradas','💸 Saídas','🎯 Aquisição','📈 Investir','🏆 Metas','📰 Mercado','📰 Notícias','🤖 Agente','💬 Chat IA','📚 Estudos','🔔 Bancos'+(pendentesBanco>0?' ('+pendentesBanco+')':'')].forEach((t,i)=>{
     tabs.append(h('button',{className:'tab'+(S.tab===i?' on':''),on:{click:()=>{
@@ -3155,9 +3372,25 @@ function render(){
       if(i===9){fetchMarket();fetchAllNews();}
       if(i===10){fetchMarket();fetchAllNews();}
       render();
+      // Scroll suave pro topo do conteúdo (mantém tab bar sticky no header)
+      window.scrollTo({top:0,behavior:'instant'});
     }}},t));
   });
   app.append(tabs);
+
+  // Restaura scroll da tab bar + scrolla pra tab ativa (se ela tá fora da viewport)
+  requestAnimationFrame(()=>{
+    tabs.scrollLeft = _prevTabsScroll;
+    const active = tabs.children[S.tab];
+    if(active){
+      const aLeft = active.offsetLeft;
+      const aRight = aLeft + active.offsetWidth;
+      const vLeft = tabs.scrollLeft;
+      const vRight = vLeft + tabs.clientWidth;
+      if(aLeft < vLeft) tabs.scrollLeft = aLeft - 12;
+      else if(aRight > vRight) tabs.scrollLeft = aRight - tabs.clientWidth + 12;
+    }
+  });
   const ct=h('div',{className:'ct'});app.append(ct);
 
   // ═══ PAINEL ═══
