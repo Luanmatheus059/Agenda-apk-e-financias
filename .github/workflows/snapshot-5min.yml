@@ -10,6 +10,10 @@ on:
   # Webhook externo (cron-job.org etc) dispara via /dispatches
   repository_dispatch:
     types: [snapshot]
+  # Push neste arquivo dispara workflow imediato (útil pra forçar rodar agora)
+  push:
+    paths:
+      - '.github/workflows/snapshot-5min.yml'
 
 concurrency:
   group: snapshot-5min
@@ -123,3 +127,4 @@ jobs:
           ok = send(msg)
           print('Enviado:' if ok else 'FALHOU:', now.isoformat())
           PY
+# trigger: 2026-05-12T14:58:42Z
