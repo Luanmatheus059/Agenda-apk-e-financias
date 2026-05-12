@@ -2161,9 +2161,11 @@ REGRAS DA RESPOSTA:
 // ═══ ESTUDOS TAB ═══
 // Material educacional em PT-BR
 function renderEstudosTab(ct){
-  // Auto-fetch market e news pra Estudos ao vivo
-  if(!(S.market.indices||[]).length) fetchMarket(true);
-  if(!(S.news||[]).length) fetchAllNews();
+  // Dispara fetch UMA vez sem force (respeita cache) e só se não está carregando.
+  // SEM esses guards havia recursão infinita: fetchMarket(true) → render() →
+  // renderEstudosTab → fetchMarket(true) → ... Maximum call stack exceeded.
+  if(!(S.market.indices||[]).length && !S.marketLoading) fetchMarket();
+  if(!(S.news||[]).length && !S.newsLoading) fetchAllNews();
 
   const sub = S.estudosSub || 'aovivo';
   const subs = [
@@ -3369,7 +3371,7 @@ function _renderInternal(){
     h('div',{className:'hdr-row'},
       h('div',{style:{flex:'1',minWidth:'0'}},
         h('div',{className:'hdr-greet'},greeting+', '+userName),
-        h('h1',null,'Minhas Finanças',h('span',{style:{fontSize:'13px',color:'#22c55e',marginLeft:'8px',fontWeight:'900',verticalAlign:'middle',padding:'2px 8px',borderRadius:'6px',background:'rgba(34,197,94,.2)',border:'1px solid #22c55e'}},'v57')),
+        h('h1',null,'Minhas Finanças',h('span',{style:{fontSize:'13px',color:'#22c55e',marginLeft:'8px',fontWeight:'900',verticalAlign:'middle',padding:'2px 8px',borderRadius:'6px',background:'rgba(34,197,94,.2)',border:'1px solid #22c55e'}},'v58')),
         h('div',{style:{display:'flex',alignItems:'center',gap:'8px',marginTop:'6px',flexWrap:'wrap'}},
           h('span',{style:{fontSize:'10px',color:'var(--text3)',fontWeight:'700',letterSpacing:'.5px',textTransform:'uppercase'}},monthName),
           h('span',{style:{fontSize:'10px',fontWeight:'800',color:_mercadoAberto?'var(--green)':'var(--text3)',padding:'3px 9px',borderRadius:'6px',background:'rgba(0,0,0,.4)',border:'1px solid var(--border)',letterSpacing:'.3px'}},_statusLabel)
