@@ -1,0 +1,7 @@
+name = "agente-financeiro-24-7"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+# Cron a cada 1 minuto, 24/7
+[triggers]
+crons = ["* * * * *"]
