@@ -123,3 +123,4 @@ jobs:
           ok = send(msg)
           print('Enviado:' if ok else 'FALHOU:', now.isoformat())
           PY
+# trigger: 2026-05-12T14:58:42Z
