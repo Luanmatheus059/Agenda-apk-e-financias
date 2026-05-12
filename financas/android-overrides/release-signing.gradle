@@ -1,7 +1,9 @@
 // Snippet apêndice ao android/app/build.gradle pra produzir APK release assinado.
-// Aplicado pelo workflow CI após `cap add android`.
-// A keystore vive em <repo-root>/keystore/release.jks
 android {
+    defaultConfig {
+        versionCode 57
+        versionName "57.0"
+    }
     signingConfigs {
         release {
             storeFile file("../../../keystore/release.jks")
