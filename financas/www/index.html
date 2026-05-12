@@ -1142,6 +1142,13 @@ async function initNotif(){
         lightColor:'#22c55e'
       });
     }catch(e){}
+    // Se permissão concedida, AGENDA AUTOMATICAMENTE — sem precisar apertar botão
+    if(S.notifPerm==='granted'){
+      try{
+        const n = await scheduleAggressiveNotifications();
+        if(n) console.log('🔔 '+n+' notif agendadas automaticamente após permissão');
+      }catch(e){console.warn('agendamento auto:',e.message)}
+    }
   }
 }
 
@@ -3485,42 +3492,18 @@ function _renderInternal(){
 
   // ═══ PAINEL ═══
   if(S.tab===0){
-    // ─── Card de notificações TEMPO REAL ───
+    // ─── Card de status notificações (apenas visual, agenda sozinho) ───
     const notifOn = S.notifPerm==='granted';
     ct.append(h('div',{className:'card',style:{border:'1px solid '+(notifOn?'rgba(16,185,129,.4)':'var(--border-gold)'),background:notifOn?'linear-gradient(135deg,rgba(16,185,129,.08),rgba(0,0,0,.4))':'linear-gradient(135deg,rgba(212,175,55,.06),rgba(0,0,0,.4))'}},
       h('div',{style:{display:'flex',gap:'10px',alignItems:'center'}},
         h('span',{className:'pulse',style:{background:notifOn?'var(--green)':'var(--gold)'}}),
         h('div',{style:{flex:'1'}},
-          h('div',{style:{fontSize:'13px',fontWeight:'800'}}, notifOn?'🔔 Notificações em tempo real ATIVAS':'🔕 Notificações em tempo real DESATIVADAS'),
+          h('div',{style:{fontSize:'13px',fontWeight:'800'}}, notifOn?'🔔 Notificações em tempo real ATIVAS':'⏳ Aguardando permissão de notificações...'),
           h('div',{style:{fontSize:'10px',color:'var(--text3)',marginTop:'2px'}},
-            notifOn?'⚡ ILIMITADAS · A cada 30min durante pregão. Notícias, mercado, dicas, setups. Reagenda sozinho a cada hora.':'Toque pra ativar fluxo contínuo a cada 30min'
+            notifOn?'⚡ ILIMITADAS · A cada 30min. Reagenda sozinho.':'Aceite quando o sistema pedir. Tudo se ativa automático.'
           )
         ),
-        h('button',{className:'btn '+(notifOn?'btn-g':'btn-o'),style:{padding:'10px 14px',fontSize:'11px'},on:{click:async()=>{
-          if(!isNative || !LocalNotifications){
-            showToast('Só funciona no APK (não no navegador)');
-            return;
-          }
-          try{
-            const perm = await LocalNotifications.checkPermissions();
-            if(perm.display !== 'granted'){
-              const req = await LocalNotifications.requestPermissions();
-              S.notifPerm = req.display==='granted'?'granted':'denied';
-              if(S.notifPerm!=='granted'){
-                showToast('❌ Permissão negada');
-                return;
-              }
-            }
-            S.notifPerm='granted';
-            showToast('🔄 Agendando 7 DIAS de notificações 24/7...');
-            const count = await scheduleAggressiveNotifications();
-            showToast(`✅ ${count} notificações 24/7 agendadas pros próximos 7 dias!`);
-            render();
-          }catch(e){
-            showToast('Erro: '+e.message);
-            console.error(e);
-          }
-        }}}, notifOn?'🔄 REAGENDAR':'🔔 ATIVAR')
+        notifOn ? h('span',{style:{fontSize:'18px'}},'✅') : null
       )
     ));
     if(saldo<0){
@@ -4615,12 +4598,8 @@ function _renderInternal(){
               h('div',{className:'banner warn'},'⚠️ Habilite o acesso à notificação. Toque em "Abrir Configurações", encontre "Minhas Finanças" e ative.'),
               h('button',{className:'btn btn-o',style:{width:'100%',padding:'12px'},on:{click:requestBankPerm}},'Abrir Configurações de Notificação')
             ),
-        h('div',{style:{display:'flex',gap:'8px',marginTop:'10px'}},
-          h('button',{className:'btn-add',disabled:S.bankLoading,style:{flex:'2',opacity:S.bankLoading?'.5':'1'},
-            on:{click:()=>{if(!S.bankLoading) refreshBankNotifs()}}},
-            S.bankLoading?'⏳ Buscando...':'🔄 Atualizar lista'),
-          h('button',{className:'btn btn-r',style:{flex:'1',padding:'13px',fontSize:'12px'},
-            on:{click:clearAllBankNotifs}},'🗑️ Limpar')
+        h('div',{style:{fontSize:'10px',color:'var(--text3)',marginTop:'10px',textAlign:'center',fontStyle:'italic'}},
+          S.bankLoading?'⏳ Atualizando...':'✓ Captura automática — sem precisar fazer nada'
         )
       ));
 
