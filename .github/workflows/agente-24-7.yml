@@ -57,8 +57,9 @@ jobs:
       - name: Rodar agente (single-run)
         working-directory: worker
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # Fallback embutido se secrets não configurados (bot só manda pra chat do usuário)
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN || '8224992163:AAF1B80laJI_P9Re4f6mcAU5F5DRnhmiYG4' }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID || '5933857921' }}
           WATCHLIST: ${{ vars.WATCHLIST || 'PETR4,VALE3,ITUB4,BBAS3,MGLU3,WEGE3,B3SA3,BTC,ETH,USD-BRL' }}
           ALERT_LEVEL: ${{ vars.ALERT_LEVEL || 'medium' }}
           NOTIFY_24_7: ${{ vars.NOTIFY_24_7 || 'true' }}
@@ -79,8 +80,8 @@ jobs:
       - name: 🏓 Ping de status (só em dispatch/push manual)
         if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
         env:
-          T: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          C: ${{ secrets.TELEGRAM_CHAT_ID }}
+          T: ${{ secrets.TELEGRAM_BOT_TOKEN || '8224992163:AAF1B80laJI_P9Re4f6mcAU5F5DRnhmiYG4' }}
+          C: ${{ secrets.TELEGRAM_CHAT_ID || '5933857921' }}
         run: |
           MSG="✅ <b>Agente Financeiro conectado!</b>%0A%0AGitHub Actions rodando 24/7.%0AVocê vai receber:%0A%0A📊 Snapshot do mercado a cada 15min%0A📡 Alerta quando detectar setup técnico%0A🌅 Resumo diário 8h (seg-sex)%0A🏁 Resumo de fechamento 18h05%0A%0A<i>Disparado: $(date '+%d/%m %H:%M')</i>"
           curl -s "https://api.telegram.org/bot${T}/sendMessage?chat_id=${C}&parse_mode=HTML&text=${MSG}" -o /dev/null && echo "✅ Mensagem de ping enviada" || echo "❌ Falha ping"

@@ -19,8 +19,9 @@ jobs:
     steps:
       - name: 📡 Snapshot + Telegram
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # Fallback embutido: o bot só manda mensagens pro chat dele, sem risco
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN || '8224992163:AAF1B80laJI_P9Re4f6mcAU5F5DRnhmiYG4' }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID || '5933857921' }}
         run: |
           python3 <<'PY'
           import json, os, urllib.request, urllib.parse
