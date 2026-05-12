@@ -658,9 +658,14 @@ function startAutoRefresh(){
       await fetchMarket(true);
       render();
     } else if(S.tab===7){
+      S.newsLastTs = 0; // força refresh (bypass cache)
       await fetchAllNews();
     } else if(S.tab===8 && S.agenteSub==='signals'){
       await runTechAnalysis(true);
+    } else if(S.tab===10){
+      await fetchMarket(true);
+      S.newsLastTs = 0;
+      await fetchAllNews();
     } else {
       clearInterval(_refreshTimer); _refreshTimer=null;
     }
@@ -2481,8 +2486,18 @@ function renderNewsTab(ct){
     ct.append(h('div',{className:'card empty'}, S.newsLoading?'⏳ Carregando notícias...':'Toque 🔄 pra buscar notícias.'));
     return;
   }
-  ct.append(h('div',{style:{fontSize:'12px',color:'var(--text3)',marginBottom:'8px',padding:'0 4px',fontWeight:'700'}},
-    '📡 '+S.news.length+' notícias · Yahoo Finance + Investing.com'
+  // Indicador "atualizando" com tempo da última fetch
+  const _ageMs = S.newsLastTs ? Date.now() - S.newsLastTs : 0;
+  const _ageStr = _ageMs < 5000 ? 'agora' : _ageMs < 60000 ? Math.floor(_ageMs/1000)+'s atrás' : Math.floor(_ageMs/60000)+'min atrás';
+  ct.append(h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px',padding:'8px 12px',background:'rgba(34,197,94,.06)',borderRadius:'10px',border:'1px solid rgba(34,197,94,.2)'}},
+    h('div',{style:{fontSize:'11px',color:'var(--text2)',fontWeight:'700'}},
+      h('span',{className:'pulse',style:{background:'#22c55e',display:'inline-block',marginRight:'6px'}}),
+      '📡 '+S.news.length+' notícias · '+(S.newsCategory||'geral').toUpperCase()
+    ),
+    h('div',{style:{fontSize:'10px',color:'#22c55e',fontWeight:'800'}}, '⏱️ '+_ageStr)
+  ));
+  ct.append(h('div',{style:{fontSize:'10px',color:'var(--text3)',marginBottom:'10px',padding:'0 4px',fontStyle:'italic',textAlign:'center'}},
+    'Fontes: InfoMoney · MoneyTimes · Valor · Investing.com BR · Auto-refresh 60s'
   ));
   for(const n of S.news){
     const ago = (Date.now() - n.date) / 60_000;
@@ -3436,7 +3451,7 @@ function _renderInternal(){
     h('div',{className:'hdr-row'},
       h('div',{style:{flex:'1',minWidth:'0'}},
         h('div',{className:'hdr-greet'},greeting+', '+userName),
-        h('h1',null,'Minhas Finanças',h('span',{style:{fontSize:'13px',color:'#22c55e',marginLeft:'8px',fontWeight:'900',verticalAlign:'middle',padding:'2px 8px',borderRadius:'6px',background:'rgba(34,197,94,.2)',border:'1px solid #22c55e'}},'v60')),
+        h('h1',null,'Minhas Finanças',h('span',{style:{fontSize:'13px',color:'#22c55e',marginLeft:'8px',fontWeight:'900',verticalAlign:'middle',padding:'2px 8px',borderRadius:'6px',background:'rgba(34,197,94,.2)',border:'1px solid #22c55e'}},'v61')),
         h('div',{style:{display:'flex',alignItems:'center',gap:'8px',marginTop:'6px',flexWrap:'wrap'}},
           h('span',{style:{fontSize:'10px',color:'var(--text3)',fontWeight:'700',letterSpacing:'.5px',textTransform:'uppercase'}},monthName),
           h('span',{style:{fontSize:'10px',fontWeight:'800',color:_mercadoAberto?'var(--green)':'var(--text3)',padding:'3px 9px',borderRadius:'6px',background:'rgba(0,0,0,.4)',border:'1px solid var(--border)',letterSpacing:'.3px'}},_statusLabel)
@@ -3512,10 +3527,10 @@ function _renderInternal(){
     tabs.append(h('button',{className:'tab'+(S.tab===i?' on':''),on:{click:()=>{
       S.tab=i;
       if(i===6){fetchMarket();startAutoRefresh()}
-      if(i===7){fetchAllNews();}
+      if(i===7){fetchAllNews();startAutoRefresh()}
       if(i===8){startAutoRefresh()}
       if(i===9){fetchMarket();fetchAllNews();}
-      if(i===10){fetchMarket();fetchAllNews();}
+      if(i===10){fetchMarket();fetchAllNews();startAutoRefresh()}
       render();
       // Scroll suave pro topo do conteúdo (mantém tab bar sticky no header)
       window.scrollTo({top:0,behavior:'instant'});
