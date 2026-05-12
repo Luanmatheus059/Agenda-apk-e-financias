@@ -2583,13 +2583,35 @@ async function scheduleAggressiveNotifications(){
 // ─── Bank notification capture ───
 async function refreshBankNotifs(){
   if(!BancoNotif) return;
+  // Roda em background com timeout — NÃO bloqueia UI
+  // Toast inicial pra feedback imediato
+  showToast('🔄 Buscando notificações de banco...');
   try{
-    const r=await BancoNotif.getCaptured();
-    S.bankNotifs = Array.isArray(r.items) ? r.items : (typeof r.items==='string'?JSON.parse(r.items):[]);
-    const p=await BancoNotif.isPermissionGranted();
-    S.bankPerm = !!p.granted;
+    // Timeout de 5s pra plugin não travar
+    const withTimeout = (p, ms)=>Promise.race([
+      p,
+      new Promise((_,r)=>setTimeout(()=>r(new Error('timeout')), ms))
+    ]);
+    const r = await withTimeout(BancoNotif.getCaptured(), 5000);
+    let items = [];
+    if(r && r.items){
+      if(Array.isArray(r.items)) items = r.items;
+      else if(typeof r.items === 'string'){
+        try{ items = JSON.parse(r.items); }catch(e){}
+      }
+    }
+    // Limita aos 100 mais recentes pra não travar render
+    S.bankNotifs = items.slice(0, 100);
+    try{
+      const p = await withTimeout(BancoNotif.isPermissionGranted(), 2000);
+      S.bankPerm = !!p?.granted;
+    }catch(e){console.warn('perm check fail',e.message)}
+    showToast('✅ '+S.bankNotifs.length+' notificações');
     render();
-  }catch(e){console.warn(e)}
+  }catch(e){
+    console.warn('refreshBankNotifs:', e.message);
+    showToast('⚠️ '+(e.message==='timeout' ? 'Plugin travou (timeout 5s)' : 'Erro ao buscar'));
+  }
 }
 async function requestBankPerm(){
   if(!BancoNotif) return;
@@ -4902,7 +4924,8 @@ if(isNative && LocalNotifications){
 }
 
 if(isNative && BancoNotif){
-  await refreshBankNotifs();
+  // Roda em background sem await — não bloqueia init do app
+  refreshBankNotifs().catch(e=>console.warn('init bank:',e));
   try{
     BancoNotif.addListener && BancoNotif.addListener('newBankNotif', refreshBankNotifs);
   }catch(e){}
