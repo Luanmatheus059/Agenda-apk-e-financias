@@ -239,25 +239,9 @@ hr,.divider{border:none;height:1px;background:linear-gradient(90deg,transparent,
 
 /* ═══ SAAS PREMIUM UPGRADES ═══ */
 
-/* Glassmorphism reforçado nos cards */
-.card{backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
-
-/* Animação de entrada com translateY (parallax) */
-@keyframes saasIn{
-  from{opacity:0;transform:translateY(20px) scale(.97)}
-  to{opacity:1;transform:translateY(0) scale(1)}
-}
-.card{animation:saasIn .45s cubic-bezier(0.16,1,0.3,1) backwards}
-.card:nth-child(1){animation-delay:0s}
-.card:nth-child(2){animation-delay:.05s}
-.card:nth-child(3){animation-delay:.1s}
-.card:nth-child(4){animation-delay:.15s}
-.card:nth-child(5){animation-delay:.2s}
-.card:nth-child(n+6){animation-delay:.25s}
-
-/* Hover lift suave (paralax 3D) */
-.market-card,.tip,.item{transition:transform .25s cubic-bezier(0.4,0,0.2,1), border-color .25s, box-shadow .25s; will-change:transform}
-.market-card:hover,.tip:hover{transform:translateY(-3px); box-shadow:0 12px 32px rgba(212,175,55,.15)}
+/* Hover lift sutil (sem animação de entrada — estava travando) */
+.market-card,.tip,.item{transition:transform .2s, border-color .2s, box-shadow .2s}
+.market-card:active,.tip:active{transform:translateY(-2px); box-shadow:0 8px 20px rgba(212,175,55,.1)}
 
 /* Sparkline animation (line draw) */
 @keyframes drawLine{from{stroke-dashoffset:200}to{stroke-dashoffset:0}}
@@ -299,7 +283,7 @@ hr,.divider{border:none;height:1px;background:linear-gradient(90deg,transparent,
 html{scroll-behavior:smooth}
 
 /* Tab bar com fade nas bordas (sugere mais conteúdo lateral) */
-.tabs{mask-image:linear-gradient(90deg,transparent 0,#000 8px,#000 calc(100% - 16px),transparent 100%);-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 8px,#000 calc(100% - 16px),transparent 100%)}
+/* mask-image removido — pode quebrar scroll touch em alguns Androids */
 </style>
 </head>
 <body>
@@ -3378,19 +3362,21 @@ function render(){
   });
   app.append(tabs);
 
-  // Restaura scroll da tab bar + scrolla pra tab ativa (se ela tá fora da viewport)
-  requestAnimationFrame(()=>{
-    tabs.scrollLeft = _prevTabsScroll;
-    const active = tabs.children[S.tab];
-    if(active){
-      const aLeft = active.offsetLeft;
-      const aRight = aLeft + active.offsetWidth;
-      const vLeft = tabs.scrollLeft;
-      const vRight = vLeft + tabs.clientWidth;
-      if(aLeft < vLeft) tabs.scrollLeft = aLeft - 12;
-      else if(aRight > vRight) tabs.scrollLeft = aRight - tabs.clientWidth + 12;
-    }
-  });
+  // Restaura scroll da tab bar — síncrono, sem requestAnimationFrame
+  tabs.scrollLeft = _prevTabsScroll;
+  setTimeout(()=>{
+    try{
+      const active = tabs.children[S.tab];
+      if(active){
+        const aLeft = active.offsetLeft;
+        const aRight = aLeft + active.offsetWidth;
+        const vLeft = tabs.scrollLeft;
+        const vRight = vLeft + tabs.clientWidth;
+        if(aLeft < vLeft) tabs.scrollLeft = aLeft - 12;
+        else if(aRight > vRight) tabs.scrollLeft = aRight - tabs.clientWidth + 12;
+      }
+    }catch(e){}
+  }, 0);
   const ct=h('div',{className:'ct'});app.append(ct);
 
   // ═══ PAINEL ═══
