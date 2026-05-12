@@ -1,0 +1,121 @@
+name: 📊 Snapshot 30min — Telegram garantido
+
+# Manda snapshot do mercado a cada 30 min, INDEPENDENTE de setup detectado.
+# Garante fluxo contínuo de mensagens no Telegram.
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'  # a cada 30 min
+  workflow_dispatch:
+
+concurrency:
+  group: snapshot-30min
+  cancel-in-progress: false
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: 📡 Snapshot + Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python3 <<'PY'
+          import json, os, urllib.request, urllib.parse
+          from datetime import datetime, timezone, timedelta
+
+          TOKEN = os.environ['TELEGRAM_BOT_TOKEN']
+          CHAT = os.environ['TELEGRAM_CHAT_ID']
+
+          # Horário Brasília
+          BR = timezone(timedelta(hours=-3))
+          now = datetime.now(BR)
+          h, day = now.hour, now.weekday()  # 0=seg, 6=dom
+          is_open = day <= 4 and 10 <= h < 18
+
+          def yh(sym):
+              try:
+                  req = urllib.request.Request(f'https://query1.finance.yahoo.com/v8/finance/chart/{sym}?interval=15m&range=1d', headers={'User-Agent':'Mozilla/5.0'})
+                  d = json.loads(urllib.request.urlopen(req, timeout=10).read())
+                  m = d['chart']['result'][0]['meta']
+                  p = m.get('regularMarketPrice'); pr = m.get('chartPreviousClose') or m.get('previousClose')
+                  if p and pr: return p, (p-pr)/pr*100
+              except: pass
+              return None, None
+
+          def send(text):
+              data = urllib.parse.urlencode({'chat_id': CHAT, 'text': text, 'parse_mode': 'HTML', 'disable_web_page_preview': 'true'}).encode()
+              try:
+                  r = json.loads(urllib.request.urlopen(urllib.request.Request(f'https://api.telegram.org/bot{TOKEN}/sendMessage', data=data), timeout=10).read())
+                  return r.get('ok')
+              except Exception as e:
+                  print('Telegram error:', e); return False
+
+          fp = lambda c: ('🟢 +' if c and c>=0 else '🔴 ')+(f'{c:.2f}%' if c is not None else '-')
+
+          # Pregão aberto → snapshot full BR
+          if is_open:
+              ibov, ic = yh('^BVSP')
+              usd, uc = yh('USDBRL=X')
+              btc, bc = yh('BTC-USD')
+              petr, pp = yh('PETR4.SA')
+              vale, vp = yh('VALE3.SA')
+              itub, ip = yh('ITUB4.SA')
+              bbas, bp = yh('BBAS3.SA')
+
+              msg = f"""📊 <b>SNAPSHOT MERCADO — {now.strftime('%H:%M')} BR</b>
+          ━━━━━━━━━━━━━━━━━━━
+
+          🟢 <b>PREGÃO ABERTO</b> · {now.strftime('%d/%m/%Y')}
+
+          <b>📊 ÍNDICES</b>
+          Ibovespa: <b>{f"{ibov:,.0f} pts".replace(',','.') if ibov else "-"}</b> {fp(ic)}
+          USD/BRL: <b>{f"R$ {usd:.4f}" if usd else "-"}</b> {fp(uc)}
+          Bitcoin: <b>{f"US$ {btc:,.0f}".replace(',','.') if btc else "-"}</b> {fp(bc)}
+
+          <b>📈 BLUE CHIPS</b>
+          PETR4: {f"R$ {petr:.2f}" if petr else "-"} {fp(pp)}
+          VALE3: {f"R$ {vale:.2f}" if vale else "-"} {fp(vp)}
+          ITUB4: {f"R$ {itub:.2f}" if itub else "-"} {fp(ip)}
+          BBAS3: {f"R$ {bbas:.2f}" if bbas else "-"} {fp(bp)}
+
+          🤖 <b>AGENTE IA</b>"""
+              score = (ic or 0) - (uc or 0)*0.5 + (bc or 0)*0.3
+              if score > 0.5:
+                  msg += "\n🟢 <b>TENDÊNCIA ALTA</b> — Procurar pontos de entrada em pullbacks."
+              elif score < -0.5:
+                  msg += "\n🔴 <b>TENDÊNCIA QUEDA</b> — Defender posições, evitar alavancagem."
+              else:
+                  msg += "\n⚪ <b>LATERALIDADE</b> — DCA funciona melhor."
+              msg += f"\n\n<i>Próximo update em 30min.</i>"
+
+          else:
+              # Fora pregão → cripto + forex (24/7)
+              btc, bc = yh('BTC-USD')
+              eth, ec = yh('ETH-USD')
+              usd, uc = yh('USDBRL=X')
+              status = "🌅 Pré-pregão" if h < 10 and day <= 4 else "🏁 Pregão fechado" if day <= 4 else "📆 Final de semana"
+
+              msg = f"""🌙 <b>FORA DO PREGÃO BR — {now.strftime('%H:%M')}</b>
+          ━━━━━━━━━━━━━━━━━━━
+
+          {status} · {now.strftime('%d/%m/%Y')}
+          Mercado 24/7 continua operando:
+
+          <b>₿ CRIPTO</b>
+          Bitcoin: <b>{f"US$ {btc:,.0f}".replace(',','.') if btc else "-"}</b> {fp(bc)}
+          Ethereum: <b>{f"US$ {eth:,.0f}".replace(',','.') if eth else "-"}</b> {fp(ec)}
+
+          <b>💱 FOREX</b>
+          USD/BRL: <b>{f"R$ {usd:.4f}" if usd else "-"}</b> {fp(uc)}
+
+          ⏰ <b>PRÓXIMO PREGÃO BR</b>
+          Abre às 10h00, fecha às 17h00 (BRT).
+
+          <i>Próximo update em 30min.</i>"""
+
+          ok = send(msg)
+          print('Enviado:' if ok else 'FALHOU:', now.isoformat())
+          PY
