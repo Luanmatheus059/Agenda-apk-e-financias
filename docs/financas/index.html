@@ -251,10 +251,15 @@ hr,.divider{border:none;height:1px;background:linear-gradient(90deg,transparent,
 // ─── Capacitor bridge ───
 const Cap = window.Capacitor;
 const isNative = !!(Cap && Cap.isNativePlatform && Cap.isNativePlatform());
-let LocalNotifications = null, BancoNotif = null;
+let LocalNotifications = null, BancoNotif = null, KeepAlive = null;
 if (isNative && Cap.Plugins) {
   LocalNotifications = Cap.Plugins.LocalNotifications || null;
   BancoNotif = Cap.Plugins.BancoNotif || null;
+  KeepAlive = Cap.Plugins.KeepAlive || null;
+  // Inicia foreground service automaticamente pra app rodar 24/7 em background
+  if (KeepAlive) {
+    KeepAlive.start().then(()=>console.log('✅ KeepAlive started')).catch(e=>console.warn('KeepAlive:',e));
+  }
 }
 
 const CATS_E=["Salário","Freelance","Vendas Plataforma","Investimentos","Comissão","Outros"];
