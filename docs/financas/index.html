@@ -946,8 +946,9 @@ Idioma: português BR. Máximo 700 palavras. Seja útil, não genérico.`},
   S.aiLoading=false; render();
 }
 
-// ─── Mercado financeiro (Brapi.dev — API pública grátis) ───
-// Yahoo Finance helper (sem auth, sem CORS para query1)
+// ─── Mercado financeiro com FALLBACKS (Yahoo + CoinGecko + AwesomeAPI + Brapi) ───
+// WebView Android pode bloquear Yahoo Finance — usamos fallbacks que aceitam CORS.
+
 async function yahooQuote(sym){
   try{
     const r = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${sym}?interval=1d&range=2d`);
@@ -962,42 +963,103 @@ async function yahooQuote(sym){
   return null;
 }
 
+// CoinGecko: cripto (CORS aberto, sem auth)
+async function coingecko(){
+  try{
+    const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd&include_24hr_change=true');
+    if(!r.ok) return null;
+    const d = await r.json();
+    return {
+      btc: d.bitcoin ? {price: d.bitcoin.usd, chg: d.bitcoin.usd_24h_change||0} : null,
+      eth: d.ethereum ? {price: d.ethereum.usd, chg: d.ethereum.usd_24h_change||0} : null
+    };
+  }catch(e){console.warn('coingecko',e.message)}
+  return null;
+}
+
+// AwesomeAPI: forex (CORS aberto, sem auth)
+async function awesomeForex(){
+  try{
+    const r = await fetch('https://economia.awesomeapi.com.br/last/USD-BRL,EUR-BRL');
+    if(!r.ok) return null;
+    const d = await r.json();
+    return {
+      usd: d.USDBRL ? {price: parseFloat(d.USDBRL.bid), chg: parseFloat(d.USDBRL.pctChange)||0} : null,
+      eur: d.EURBRL ? {price: parseFloat(d.EURBRL.bid), chg: parseFloat(d.EURBRL.pctChange)||0} : null
+    };
+  }catch(e){console.warn('awesome',e.message)}
+  return null;
+}
+
+// Brapi: ações BR (até 100 req/dia sem token)
+async function brapiQuote(symbols){
+  try{
+    const r = await fetch(`https://brapi.dev/api/quote/${symbols.join(',')}?range=1d`);
+    if(!r.ok) return null;
+    const d = await r.json();
+    if(!d.results) return null;
+    const out = {};
+    for(const x of d.results){
+      out[x.symbol] = {price: x.regularMarketPrice, chg: x.regularMarketChangePercent||0};
+    }
+    return out;
+  }catch(e){console.warn('brapi',e.message)}
+  return null;
+}
+
 async function fetchMarket(force){
   if(!force && S.market.ts && (Date.now()-S.market.ts) < 5*60_000) return;
   S.marketLoading=true; render();
   try{
-    // Yahoo Finance é a fonte primária (sem auth)
-    // Ações BR usam .SA. Índices têm ^. Forex tem =X. Cripto -USD
-    const symMap = [
-      ['^BVSP','IBOV','Ibovespa'],
-      ['USDBRL=X','USD/BRL','Dólar'],
-      ['BTC-USD','BTC','Bitcoin'],
-      ['PETR4.SA','PETR4','Petrobras'],
-      ['VALE3.SA','VALE3','Vale'],
-      ['ITUB4.SA','ITUB4','Itaú'],
-      ['BBDC4.SA','BBDC4','Bradesco'],
-      ['BBAS3.SA','BBAS3','Banco do Brasil'],
-      ['ABEV3.SA','ABEV3','Ambev'],
-      ['WEGE3.SA','WEGE3','WEG'],
-      ['MGLU3.SA','MGLU3','Magazine Luiza'],
-      ['B3SA3.SA','B3SA3','B3'],
-      ['ITSA4.SA','ITSA4','Itaúsa'],
-      ['BBSE3.SA','BBSE3','BB Seguridade'],
-      ['TAEE11.SA','TAEE11','Taesa'],
-      ['EGIE3.SA','EGIE3','Engie']
-    ];
+    const stockSyms = ['PETR4','VALE3','ITUB4','BBDC4','BBAS3','ABEV3','WEGE3','MGLU3','B3SA3','ITSA4','BBSE3','TAEE11','EGIE3'];
 
-    // Busca em PARALELO via Yahoo
-    const results = await Promise.all(symMap.map(async ([y,sym,name])=>{
-      const q = await yahooQuote(y);
-      return q ? {symbol:sym,name,price:q.price,chg:q.chg} : null;
-    }));
-    const valid = results.filter(Boolean);
+    // Tenta 3 fontes em paralelo
+    const [yahoo_ibov, cg, awe, brapi] = await Promise.all([
+      yahooQuote('^BVSP'),
+      coingecko(),
+      awesomeForex(),
+      brapiQuote(['IBOV', ...stockSyms])
+    ]);
 
-    const indices = valid.filter(r=>['IBOV','USD/BRL','BTC'].includes(r.symbol));
-    const stocks = valid.filter(r=>!['IBOV','USD/BRL','BTC'].includes(r.symbol));
+    const indices = [];
+    // Ibov: tenta Brapi primeiro, depois Yahoo
+    const ibovBrapi = brapi?.IBOV;
+    const ibov = ibovBrapi || yahoo_ibov;
+    if(ibov) indices.push({symbol:'IBOV',name:'Ibovespa',price:ibov.price,chg:ibov.chg});
 
-    // Notícias da Yahoo (free)
+    // USD: AwesomeAPI primeiro
+    if(awe?.usd) indices.push({symbol:'USD/BRL',name:'Dólar',price:awe.usd.price,chg:awe.usd.chg});
+    else {
+      const y = await yahooQuote('USDBRL=X');
+      if(y) indices.push({symbol:'USD/BRL',name:'Dólar',price:y.price,chg:y.chg});
+    }
+
+    // BTC: CoinGecko primeiro
+    if(cg?.btc) indices.push({symbol:'BTC',name:'Bitcoin',price:cg.btc.price,chg:cg.btc.chg});
+    else {
+      const y = await yahooQuote('BTC-USD');
+      if(y) indices.push({symbol:'BTC',name:'Bitcoin',price:y.price,chg:y.chg});
+    }
+
+    // Ações BR: prioriza Brapi (mais leve), fallback Yahoo individual
+    const stocks = [];
+    for(const sym of stockSyms){
+      const q = brapi?.[sym];
+      if(q) stocks.push({symbol:sym,name:sym,price:q.price,chg:q.chg});
+    }
+    // Fallback Yahoo pros que Brapi falhou
+    if(stocks.length < stockSyms.length/2){
+      const yahooRes = await Promise.all(stockSyms.map(async sym=>{
+        const q = await yahooQuote(sym+'.SA');
+        return q ? {symbol:sym,name:sym,price:q.price,chg:q.chg} : null;
+      }));
+      const yahooStocks = yahooRes.filter(Boolean);
+      // Mescla evitando duplicatas
+      const seen = new Set(stocks.map(s=>s.symbol));
+      for(const ys of yahooStocks) if(!seen.has(ys.symbol)) stocks.push(ys);
+    }
+
+    // Notícias da Yahoo (free, opcional)
     const news = [];
     try{
       const r = await fetch('https://query1.finance.yahoo.com/v1/finance/search?q=ibovespa&newsCount=5');
@@ -1016,10 +1078,9 @@ async function fetchMarket(force){
 
     S.market = {ts:Date.now(), indices, stocks, news};
     LS.set('market', S.market);
-    console.log('📊 Mercado: '+indices.length+' índices + '+stocks.length+' ações');
+    console.log('📊 Mercado: '+indices.length+' índices + '+stocks.length+' ações (fontes: Brapi+CoinGecko+AwesomeAPI+Yahoo)');
   }catch(e){
     console.error('Market fetch error',e);
-    // Marca timestamp mesmo em erro pra status mudar de 'Inicializando' pra 'Sem conexão'
     S.market.ts = Date.now();
     S.market.error = e.message || 'sem conexão';
     LS.set('market', S.market);
@@ -3375,7 +3436,7 @@ function _renderInternal(){
     h('div',{className:'hdr-row'},
       h('div',{style:{flex:'1',minWidth:'0'}},
         h('div',{className:'hdr-greet'},greeting+', '+userName),
-        h('h1',null,'Minhas Finanças',h('span',{style:{fontSize:'13px',color:'#22c55e',marginLeft:'8px',fontWeight:'900',verticalAlign:'middle',padding:'2px 8px',borderRadius:'6px',background:'rgba(34,197,94,.2)',border:'1px solid #22c55e'}},'v58')),
+        h('h1',null,'Minhas Finanças',h('span',{style:{fontSize:'13px',color:'#22c55e',marginLeft:'8px',fontWeight:'900',verticalAlign:'middle',padding:'2px 8px',borderRadius:'6px',background:'rgba(34,197,94,.2)',border:'1px solid #22c55e'}},'v59')),
         h('div',{style:{display:'flex',alignItems:'center',gap:'8px',marginTop:'6px',flexWrap:'wrap'}},
           h('span',{style:{fontSize:'10px',color:'var(--text3)',fontWeight:'700',letterSpacing:'.5px',textTransform:'uppercase'}},monthName),
           h('span',{style:{fontSize:'10px',fontWeight:'800',color:_mercadoAberto?'var(--green)':'var(--text3)',padding:'3px 9px',borderRadius:'6px',background:'rgba(0,0,0,.4)',border:'1px solid var(--border)',letterSpacing:'.3px'}},_statusLabel)
