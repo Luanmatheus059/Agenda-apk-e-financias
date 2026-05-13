@@ -527,22 +527,110 @@ async function sendNews(rotationIdx){
   }
 }
 
+const ESTUDOS = [
+  {
+    t: '📚 RSI — Termômetro do mercado',
+    b: 'RSI varia de 0-100:\n\n' +
+       '• <b>RSI > 70</b> = sobrecomprado → correção provável\n' +
+       '• <b>RSI < 30</b> = sobrevendido → recuperação\n' +
+       '• <b>RSI 40-60</b> = neutro\n\n' +
+       '💡 Em tendência forte de alta, RSI 50 já é compra.\n' +
+       'Em queda forte, RSI 50 é venda.'
+  },
+  {
+    t: '📚 Dividend Yield',
+    b: 'DY = (dividendo anual / preço) × 100\n\n' +
+       'Top DY BR 2026:\n' +
+       '• PETR4: ~12%\n' +
+       '• BBAS3: ~10%\n' +
+       '• TAEE11: ~9%\n' +
+       '• VALE3: ~8%\n' +
+       '• ITSA4: ~7%\n\n' +
+       '💡 DY alto não basta — cheque payout e dívida.'
+  },
+  {
+    t: '📚 Médias Móveis',
+    b: 'MM = média do preço de N períodos:\n\n' +
+       '• Preço > MM20 > MM50 = ALTA confirmada\n' +
+       '• Preço < MM20 < MM50 = QUEDA confirmada\n' +
+       '• MM20 cruza MM50 ↑ = GOLDEN CROSS\n' +
+       '• MM20 cruza MM50 ↓ = DEATH CROSS'
+  },
+  {
+    t: '📚 Diversificação',
+    b: 'Carteira balanceada padrão:\n\n' +
+       '<b>60% Renda Variável</b>\n' +
+       '  - 30% Ações BR\n' +
+       '  - 20% ETFs\n' +
+       '  - 10% FIIs\n\n' +
+       '<b>30% Renda Fixa</b>\n' +
+       '  - Tesouro Selic\n' +
+       '  - CDB 120% CDI\n\n' +
+       '<b>10% Cripto + Ouro</b>\n\n' +
+       '💡 Rebalanceie a cada 6 meses.'
+  },
+  {
+    t: '📚 Quando comprar / vender',
+    b: '<b>COMPRA:</b>\n' +
+       '• RSI < 30 em uptrend\n' +
+       '• Pullback até MM20\n' +
+       '• Notícia + análise favorável\n\n' +
+       '<b>VENDA:</b>\n' +
+       '• RSI > 75 sustentado\n' +
+       '• Stop loss atingido\n' +
+       '• Fundamentos mudaram\n\n' +
+       '💡 NUNCA average down sem motivo.'
+  },
+  {
+    t: '📚 Risk/Reward',
+    b: 'R/R = (alvo - entrada) / (entrada - stop)\n\n' +
+       'Exemplo: PETR4 a R$ 30\n' +
+       '• Alvo: R$ 33 (+10%)\n' +
+       '• Stop: R$ 29 (-3,3%)\n' +
+       '• R/R: 3 / 1 = <b>1:3</b>\n\n' +
+       '💡 NUNCA opere R/R abaixo de 1:2.'
+  },
+  {
+    t: '📚 Análise Fundamentalista',
+    b: 'Indicadores chave:\n\n' +
+       '• <b>P/L</b>: preço / lucro\n' +
+       '• <b>P/VP</b>: preço / valor patrim.\n' +
+       '• <b>ROE</b>: > 15% é bom\n' +
+       '• <b>Dívida/EBITDA</b>: <3 é saudável\n' +
+       '• <b>Margem líquida</b>: > 10% é forte'
+  },
+  {
+    t: '📚 Como funciona o pregão',
+    b: 'B3 em dias úteis:\n\n' +
+       '• <b>09h45-10h00</b>: Pré-abertura\n' +
+       '• <b>10h00-17h00</b>: Pregão\n' +
+       '• <b>17h00-17h25</b>: Leilão fim\n' +
+       '• <b>17h25-18h00</b>: After-market\n\n' +
+       '💡 Maior volume na abertura e fechamento.'
+  },
+  {
+    t: '📚 Pressão Compradora x Vendedora',
+    b: 'O donut que você recebe mostra:\n\n' +
+       '• <b>Verde</b>: % dias dos últimos 30 em ALTA\n' +
+       '• <b>Vermelho</b>: % dias em QUEDA\n\n' +
+       '💡 > 65% verde = tendência forte de alta.\n' +
+       '> 65% vermelho = pressão baixista clara.'
+  },
+  {
+    t: '📚 Candlestick — Lendo as velas',
+    b: 'Cada vela mostra 1 dia:\n\n' +
+       '• <b>Verde</b>: fechou acima abertura\n' +
+       '• <b>Vermelho</b>: fechou abaixo abertura\n' +
+       '• <b>Corpo grande</b>: força do movimento\n' +
+       '• <b>Pavio longo</b>: rejeição do preço\n\n' +
+       '💡 3 verdes = momentum forte.'
+  }
+];
+
 async function sendEstudo(){
-  const topics = [
-    {t:'📚 RSI — Termômetro do mercado',b:'RSI varia de 0-100:\n\n• <b>RSI > 70</b> = sobrecomprado → correção provável\n• <b>RSI < 30</b> = sobrevendido → recuperação\n• <b>RSI 40-60</b> = neutro\n\n💡 Em tendência forte de alta, RSI 50 já é compra.\nEm queda forte, RSI 50 é venda.'},
-    {t:'📚 Dividend Yield',b:'DY = (dividendo anual / preço) × 100\n\nTop DY BR 2026:\n• PETR4: ~12%\n• BBAS3: ~10%\n• TAEE11: ~9%\n• VALE3: ~8%\n• ITSA4: ~7%\n\n💡 DY alto não basta — cheque payout, dívida líquida e histórico.'},
-    {t:'📚 Médias Móveis',b:'MM = média do preço de N períodos:\n\n• Preço > MM20 > MM50 = ALTA confirmada\n• Preço < MM20 < MM50 = QUEDA confirmada\n• MM20 cruza MM50 ↑ = GOLDEN CROSS (compra)\n• MM20 cruza MM50 ↓ = DEATH CROSS (venda)'},
-    {t:'📚 Diversificação',b:'Carteira balanceada padrão:\n\n• <b>60% Renda Variável</b>\n  - 30% Ações BR\n  - 20% ETFs (BOVA11, IVVB11)\n  - 10% FIIs\n\n• <b>30% Renda Fixa</b>\n  - Tesouro Selic\n  - CDB 120% CDI\n  - Tesouro IPCA+\n\n• <b>10% Cripto + Ouro</b>\n\n💡 Rebalanceie a cada 6 meses.'},
-    {t:'📚 Quando comprar / vender',b:'<b>COMPRA:</b>\n• RSI < 30 em uptrend\n• Pullback até MM20\n• Notícia + análise técnica favorável\n\n<b>VENDA:</b>\n• RSI > 75 sustentado\n• Stop loss atingido\n• Fundamentos mudaram\n\n💡 NUNCA average down sem motivo claro.'},
-    {t:'📚 Risk/Reward',b:'R/R = (alvo - entrada) / (entrada - stop)\n\nExemplo: PETR4 a R$ 30\n• Alvo: R$ 33 (+10%)\n• Stop: R$ 29 (-3,3%)\n• R/R: 3 / 1 = <b>1:3</b>\n\n💡 NUNCA opere R/R abaixo de 1:2.'},
-    {t:'📚 Análise Fundamentalista',b:'Indicadores chave:\n\n• <b>P/L</b>: preço / lucro (quanto menor, mais barato)\n• <b>P/VP</b>: preço / valor patrimonial\n• <b>ROE</b>: rentabilidade > 15% é bom\n• <b>Dívida/EBITDA</b>: <3 é saudável\n• <b>Margem líquida</b>: > 10% é forte\n\n💡 Banco e cíclica têm parâmetros diferentes.'},
-    {t:'📚 Como funciona o pregão',b:'B3 funciona em dias úteis:\n\n• <b>09h45-10h00</b>: Pré-abertura (leilão)\n• <b>10h00-17h00</b>: Pregão normal\n• <b>17h00-17h25</b>: Leilão fechamento\n• <b>17h25-18h00</b>: After-market\n\n💡 Maior volume nas primeiras e últimas horas.'},
-    {t:'📚 Pressão Compradora x Vendedora',b:'O gráfico que você recebe mostra:\n\n• <b>Compradores (verde)</b>: % de dias dos últimos 30 que fecharam em ALTA\n• <b>Vendedores (vermelho)</b>: % que fecharam em QUEDA\n\n💡 Se compradores > 65% nos últimos 30 dias = tendência forte de alta.\nSe vendedores > 65% = pressão baixista clara.'},
-    {t:'📚 Candlestick — Lendo as velas',b:'Cada vela mostra 1 dia:\n\n• <b>Verde</b>: fechou ACIMA da abertura (compradores ganharam)\n• <b>Vermelho</b>: fechou ABAIXO da abertura (vendedores ganharam)\n• <b>Corpo grande</b>: força do movimento\n• <b>Pavio longo</b>: rejeição do preço\n\n💡 3 verdes seguidas = momentum forte. 3 vermelhas = pressão de venda.'}
-  ];
   const t = brTime();
-  const idx = (t.getUTCHours() * 60 + t.getUTCMinutes()) % topics.length;
-  const top = topics[idx];
+  const idx = (t.getUTCHours() * 60 + t.getUTCMinutes()) % ESTUDOS.length;
+  const top = ESTUDOS[idx];
   await tg('🎓 <b>ESTUDO DO MERCADO</b>\n━━━━━━━━━━━\n\n<b>' + top.t + '</b>\n\n' + top.b);
 }
 
