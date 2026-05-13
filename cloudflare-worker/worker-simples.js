@@ -378,14 +378,123 @@ async function pacoteFimSemana(){
   await sendNoticias();
 }
 
+async function sendCandleRotativo(data,m){
+  const list=[
+    {s:'^BVSP',n:'IBOVESPA'},
+    {s:'BTC-USD',n:'BITCOIN'},
+    {s:'USDBRL=X',n:'USD/BRL'},
+    {s:'NVDA',n:'NVIDIA'},
+    {s:'PETR4.SA',n:'PETR4'},
+    {s:'VALE3.SA',n:'VALE3'},
+    {s:'ETH-USD',n:'ETHEREUM'},
+    {s:'GC=F',n:'OURO'},
+    {s:'META',n:'META'},
+    {s:'HASH11.SA',n:'HASH11 (cripto BR)'},
+    {s:'IVVB11.SA',n:'IVVB11 (S&P em reais)'},
+    {s:'MXRF11.SA',n:'MXRF11 (FII)'}
+  ];
+  const c=list[Math.floor(m/5)%list.length];
+  const x=data[c.s];
+  if(!x||!x.o||x.o.length<3)return;
+  const url=candleURL(c.n,x.o,x.cl);
+  const p=x.p<10?f4(x.p):intf(x.p);
+  await tp(url,'🕯️ <b>'+c.n+'</b>\nÚltimo: '+p+' '+pct(x.c)+'\nVerde = compradores · Vermelho = vendedores');
+}
+
+async function sendDonutRotativo(data,m){
+  const list=[
+    {s:'^BVSP',n:'IBOV'},
+    {s:'BTC-USD',n:'BTC'},
+    {s:'PETR4.SA',n:'PETR4'},
+    {s:'NVDA',n:'NVDA'},
+    {s:'VALE3.SA',n:'VALE3'},
+    {s:'USDBRL=X',n:'USD/BRL'}
+  ];
+  const c=list[Math.floor(m/5)%list.length];
+  const x=data[c.s];
+  if(!x||!x.o||x.o.length<5)return;
+  const p=pressureData(x.o,x.cl);
+  const url=donutURL(c.n,x.o,x.cl);
+  let an;
+  if(p.bp>=65)an='🟢 <b>FORÇA COMPRADORA</b> dominante (30 dias).';
+  else if(p.bp>=55)an='🟢 Leve vantagem compradores.';
+  else if(p.ep>=65)an='🔴 <b>FORÇA VENDEDORA</b> dominante.';
+  else if(p.ep>=55)an='🔴 Leve vantagem vendedores.';
+  else an='⚪ Equilíbrio — pode romper qualquer lado.';
+  await tp(url,'⚖️ <b>PRESSÃO '+c.n+' — 30 dias</b>\nCompradores: <b>'+p.bp+'%</b>\nVendedores: <b>'+p.ep+'%</b>\n\n'+an);
+}
+
+async function sendUmaNoticia(m){
+  const idx=Math.floor(m/5)%NEWS.length;
+  try{
+    const url=NEWS[idx];
+    const r=await fetch('https://api.rss2json.com/v1/api.json?rss_url='+encodeURIComponent(url));
+    const d=await r.json();
+    const it=(d&&d.items||[])[0];
+    if(!it)return;
+    let img=it.thumbnail||(it.enclosure&&it.enclosure.link);
+    if(!img&&it.description){const reg=it.description.match(/<img[^>]+src=["']([^"']+)["']/);if(reg)img=reg[1]}
+    const cap='📰 <b>NOTÍCIA REAL TIME</b>\n━━━━━━━━━━━━━━━\n<b>'+(it.title||'').slice(0,220)+'</b>\n\n🔗 <a href="'+it.link+'">Ler matéria completa</a>';
+    if(img){try{await tp(img,cap)}catch(e){await tg(cap)}}else await tg(cap);
+  }catch(e){}
+}
+
+async function sendSinaisTop3(data){
+  const sin=[];
+  for(const s of BR){
+    const x=data[s];
+    if(!x||!x.cl||x.cl.length<20)continue;
+    const r=rsi(x.cl),s20=sma(x.cl,20),s50=sma(x.cl,50);
+    let setup,desc,why;
+    if(r&&r<30&&x.c<-1){setup='🟢 COMPRA SOBREVENDA';desc='RSI '+Math.round(r)+' + queda '+x.c.toFixed(1)+'%';why='Reversão técnica provável 1-3 dias.'}
+    else if(r&&r>75&&x.c>1){setup='🔴 VENDA TOPO';desc='RSI '+Math.round(r)+' + alta '+x.c.toFixed(1)+'%';why='Esgotamento. Realize lucro.'}
+    else if(s20&&s50&&s20>s50*1.005&&x.p>s20&&x.c>0.5){setup='🟢 ACUMULAR ALTA';desc='MM20>MM50 + preço acima MM20';why='Bull confirmado. Compre em pullback.'}
+    else if(s20&&s50&&s20<s50*0.995&&x.p<s20&&x.c<-0.5){setup='🔴 EVITAR QUEDA';desc='MM20<MM50 + preço abaixo MM20';why='Fraqueza estrutural.'}
+    if(setup){
+      const lg=setup.indexOf('🟢')>=0;
+      const stp=lg?+(x.p*0.97).toFixed(2):+(x.p*1.03).toFixed(2);
+      const tgt=lg?+(x.p*1.05).toFixed(2):+(x.p*0.95).toFixed(2);
+      sin.push({n:x.n,p:x.p,c:x.c,r,setup,desc,why,stp,tgt});
+    }
+  }
+  sin.sort((a,b)=>{const av=a.setup.indexOf('🟢')>=0?1:0,bv=b.setup.indexOf('🟢')>=0?1:0;return bv-av});
+  let t='🎯 <b>SINAIS COMPRA/VENDA — '+ts()+'</b>\n━━━━━━━━━━━━━━━\n\n';
+  if(!sin.length){t+='⚪ Sem setups técnicos rigorosos. Aguarde definição.';}
+  else{
+    for(const s of sin.slice(0,3)){
+      t+='<b>'+s.setup+' — '+s.n+'</b>\n';
+      t+='R$ '+s.p.toFixed(2)+' '+pct(s.c)+' · '+s.desc+'\n';
+      t+='<i>'+s.why+'</i>\n';
+      t+='🛑 R$ '+s.stp.toFixed(2)+' · 🎯 R$ '+s.tgt.toFixed(2)+'\n\n';
+    }
+    t+='⚠️ <i>Educacional. Stop obrigatório. Máx 2% capital.</i>';
+  }
+  await tg(t);
+}
+
+async function pacotePadrao(m){
+  const data=await getAll();
+  await sendMegaSnapshot(data);
+  await sendAnaliseHoje(data);
+  await sendEstudoAoVivo(data);
+  await sendSinaisTop3(data);
+  await sendCandleRotativo(data,m);
+  await sendDonutRotativo(data,m);
+  await sendUmaNoticia(m);
+}
+
 async function run(){
   const s=st(),m=new Date().getUTCMinutes();
-  if(m!==0&&m!==30)return;
-  if(s==='fim'){await pacoteFimSemana();return}
-  await pacoteCompleto();
+  if(m%5!==0)return;
+  if(s==='fim'){
+    if(m===0||m===30)await pacoteFimSemana();
+    return;
+  }
+  if(m===0||m===30){await pacoteCompleto();return}
+  await pacotePadrao(m);
 }
 
 export default{
-  async fetch(r,e,c){return new Response('Agente Financeiro v13 ativo. Cron 30min via scheduled. Pacote completo 2x/hora.')},
+  async fetch(r,e,c){return new Response('Agente Financeiro v14 ativo. Cron 5min: pacote padrao (7 msgs) + mega a cada 30min (18 msgs).')},
   async scheduled(e,n,c){c.waitUntil(run())}
 };
