@@ -1,7 +1,7 @@
 // Agente Financeiro Worker v12 - compact paste-safe
 const T='8224992163:AAF1B80laJI_P9Re4f6mcAU5F5DRnhmiYG4';
 const C='5933857921';
-const UA='Mozilla/5.0';
+const UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 const BR=['PETR4.SA','VALE3.SA','ITUB4.SA','BBAS3.SA','BBDC4.SA','MGLU3.SA','WEGE3.SA','ABEV3.SA','ITSA4.SA','BBSE3.SA','TAEE11.SA','VIVT3.SA','RENT3.SA','SUZB3.SA','EGIE3.SA','PRIO3.SA'];
 const US=['AAPL','MSFT','GOOGL','AMZN','TSLA','NVDA','META'];
@@ -146,7 +146,10 @@ async function sendNews(idx){
     }catch(e){}
   }
   const seen=new Set(),uniq=[];
-  for(const n of got){const k=(n.t||'').toLowerCase().slice(0,60);if(!seen.has(k)){seen.add(k);uniq.push(n)}}
+  for(const n of got){
+    const k=(n.t||'').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,40);
+    if(k&&!seen.has(k)){seen.add(k);uniq.push(n)}
+  }
   for(let i=0;i<Math.min(3,uniq.length);i++){
     const n=uniq[i];
     const cap='📰 <b>NOTICIA '+(i+1)+'</b>\n<b>'+(n.t||'').slice(0,200)+'</b>\n🔗 <a href="'+n.l+'">Ler</a>';
@@ -259,6 +262,6 @@ async function run(){
 }
 
 export default{
-  async fetch(r,e,c){await run();return new Response('OK')},
+  async fetch(r,e,c){return new Response('Agente Financeiro ativo. Cron 1min via scheduled handler.')},
   async scheduled(e,n,c){c.waitUntil(run())}
 };
