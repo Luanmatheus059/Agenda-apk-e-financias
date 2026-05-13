@@ -1,9 +1,7 @@
-// Agente Financeiro Worker v13 - MEGA PACOTE COMPLETO a cada 30min
-// Tudo junto: snapshot + análise + estudo AO VIVO + sinais + recomendações + gráficos + notícias
-
+// Worker v15 - ultra-compacto, paste-safe
 const T='8224992163:AAF1B80laJI_P9Re4f6mcAU5F5DRnhmiYG4';
 const C='5933857921';
-const UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+const UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36';
 
 const IDX=['^BVSP','^GSPC','^IXIC','^DJI','^N225','^FTSE','^GDAXI'];
 const BR=['PETR4.SA','VALE3.SA','ITUB4.SA','BBAS3.SA','BBDC4.SA','MGLU3.SA','WEGE3.SA','ABEV3.SA','ITSA4.SA','BBSE3.SA','TAEE11.SA','VIVT3.SA','RENT3.SA','SUZB3.SA','EGIE3.SA','PRIO3.SA','RADL3.SA','B3SA3.SA','CSAN3.SA','KLBN11.SA'];
@@ -14,15 +12,14 @@ const CRI=['BTC-USD','ETH-USD','SOL-USD','BNB-USD','XRP-USD','ADA-USD','DOGE-USD
 const FX=['USDBRL=X','EURBRL=X','GBPBRL=X','JPYBRL=X'];
 const COM=['GC=F','CL=F','SI=F'];
 
-const NEWS=[
+const NW=[
 'https://www.infomoney.com.br/feed/',
 'https://br.investing.com/rss/news_25.rss',
 'https://www.moneytimes.com.br/feed/',
 'https://www.infomoney.com.br/mercados/feed/',
 'https://valor.globo.com/valor-investe/rss/',
 'https://br.investing.com/rss/news_11.rss',
-'https://br.investing.com/rss/news_301.rss',
-'https://www.moneytimes.com.br/category/economia/feed/'
+'https://br.investing.com/rss/news_301.rss'
 ];
 
 async function yh(s){
@@ -31,315 +28,176 @@ async function yh(s){
     const d=await r.json();
     const x=d&&d.chart&&d.chart.result&&d.chart.result[0];
     if(!x)return null;
-    const m=x.meta;
-    const q=x.indicators&&x.indicators.quote&&x.indicators.quote[0];
+    const m=x.meta,q=x.indicators&&x.indicators.quote&&x.indicators.quote[0];
     if(!m||!m.regularMarketPrice||!m.previousClose)return null;
     const o=((q&&q.open)||[]).filter(v=>v!=null);
     const c=((q&&q.close)||[]).filter(v=>v!=null);
-    const n=s.replace('.SA','').replace('=X','').replace('-USD','').replace('^','');
-    return{s,p:m.regularMarketPrice,c:(m.regularMarketPrice-m.previousClose)/m.previousClose*100,o,cl:c,n};
+    return{s,p:m.regularMarketPrice,c:(m.regularMarketPrice-m.previousClose)/m.previousClose*100,o,cl:c,n:s.replace('.SA','').replace('=X','').replace('-USD','').replace('^','')};
   }catch(e){return null}
 }
 
-async function tg(t){
-  await fetch('https://api.telegram.org/bot'+T+'/sendMessage',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({chat_id:C,text:t,parse_mode:'HTML',disable_web_page_preview:'true'})});
-}
+async function tg(t){await fetch('https://api.telegram.org/bot'+T+'/sendMessage',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({chat_id:C,text:t,parse_mode:'HTML',disable_web_page_preview:'true'})})}
 
-async function tp(p,cap){
-  await fetch('https://api.telegram.org/bot'+T+'/sendPhoto',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({chat_id:C,photo:p,caption:cap.slice(0,1024),parse_mode:'HTML'})});
-}
+async function tp(p,cap){await fetch('https://api.telegram.org/bot'+T+'/sendPhoto',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({chat_id:C,photo:p,caption:cap.slice(0,1024),parse_mode:'HTML'})})}
 
-function pct(c){if(c==null)return'-';return(c>=0?'🟢 +':'🔴 ')+c.toFixed(2)+'%'}
-function f2(p){return p?p.toFixed(2):'-'}
-function f4(p){return p?p.toFixed(4):'-'}
-function intf(p){return p?Math.round(p).toLocaleString('de-DE'):'-'}
-function bt(){return new Date(Date.now()-3*3600*1000)}
-function ts(){return bt().toISOString().slice(11,16)}
+const pct=c=>c==null?'-':(c>=0?'🟢 +':'🔴 ')+c.toFixed(2)+'%';
+const f2=p=>p?p.toFixed(2):'-';
+const f4=p=>p?p.toFixed(4):'-';
+const intf=p=>p?Math.round(p).toLocaleString('de-DE'):'-';
+const bt=()=>new Date(Date.now()-3*3600*1000);
+const ts=()=>bt().toISOString().slice(11,16);
 
-function st(){
-  const t=bt(),h=t.getUTCHours(),d=t.getUTCDay();
-  if(d===0||d===6)return'fim';
-  if(h<10)return'pre';
-  if(h<17)return'aberto';
-  if(h<18)return'leilao';
-  return'fechado';
-}
+function st(){const t=bt(),h=t.getUTCHours(),d=t.getUTCDay();if(d===0||d===6)return'fim';if(h<10)return'pre';if(h<17)return'aberto';if(h<18)return'leilao';return'fechado'}
 
-function rsi(c){
-  if(c.length<15)return null;
-  let g=0,l=0;
-  for(let i=c.length-14;i<c.length;i++){const d=c[i]-c[i-1];if(d>0)g+=d;else l-=d}
-  if(l===0)return 100;
-  return 100-100/(1+g/l);
-}
+function rsi(c){if(c.length<15)return null;let g=0,l=0;for(let i=c.length-14;i<c.length;i++){const d=c[i]-c[i-1];if(d>0)g+=d;else l-=d}if(l===0)return 100;return 100-100/(1+g/l)}
+const sma=(c,n)=>c.length<n?null:c.slice(-n).reduce((a,b)=>a+b,0)/n;
 
-function sma(c,n){if(c.length<n)return null;return c.slice(-n).reduce((a,b)=>a+b,0)/n}
-
-function candleURL(name,o,cl){
+function candleU(name,o,cl){
   const n=Math.min(20,o.length),op=o.slice(-n),clo=cl.slice(-n);
   const bg=clo.map((c,i)=>c>=op[i]?'#22c55e':'#ef4444');
   const dt=clo.map((c,i)=>[op[i],c]);
-  const lab=op.map((_,i)=>'D'+(n-i));
-  const cfg={type:'bar',data:{labels:lab,datasets:[{label:name,data:dt,backgroundColor:bg}]},options:{title:{display:true,text:'🕯️ '+name+' '+n+'d',fontColor:'#d4af37',fontSize:18},legend:{display:false}}};
+  const cfg={type:'bar',data:{labels:op.map((_,i)=>'D'+(n-i)),datasets:[{data:dt,backgroundColor:bg}]},options:{title:{display:true,text:'🕯️ '+name+' '+n+'d',fontColor:'#d4af37',fontSize:18},legend:{display:false}}};
   return'https://quickchart.io/chart?bkg=%230a0a0a&w=900&h=500&c='+encodeURIComponent(JSON.stringify(cfg));
 }
 
-function pressureData(o,cl){
-  let bu=0,be=0;
-  for(let i=0;i<cl.length;i++){if(cl[i]>=o[i])bu++;else be++}
-  const t=bu+be;
-  return{bp:t?Math.round(bu/t*100):50,ep:t?Math.round(be/t*100):50,bu,be};
-}
+function press(o,cl){let bu=0,be=0;for(let i=0;i<cl.length;i++){if(cl[i]>=o[i])bu++;else be++}const t=bu+be;return{bp:t?Math.round(bu/t*100):50,ep:t?Math.round(be/t*100):50,bu,be}}
 
-function donutURL(name,o,cl){
-  const p=pressureData(o,cl);
-  const cfg={type:'doughnut',data:{labels:['Compradores '+p.bp+'%','Vendedores '+p.ep+'%'],datasets:[{data:[p.bu,p.be],backgroundColor:['#22c55e','#ef4444']}]},options:{title:{display:true,text:'⚖️ Pressao '+name,fontColor:'#d4af37',fontSize:18},legend:{labels:{fontColor:'#fff'}}}};
+function donutU(name,o,cl){
+  const p=press(o,cl);
+  const cfg={type:'doughnut',data:{labels:['Comp '+p.bp+'%','Vend '+p.ep+'%'],datasets:[{data:[p.bu,p.be],backgroundColor:['#22c55e','#ef4444']}]},options:{title:{display:true,text:'⚖️ Pressao '+name,fontColor:'#d4af37',fontSize:18},legend:{labels:{fontColor:'#fff'}}}};
   return'https://quickchart.io/chart?bkg=%230a0a0a&w=700&h=500&c='+encodeURIComponent(JSON.stringify(cfg));
 }
 
-async function getAll(){
-  const all=IDX.concat(BR,US,ETF,FII,CRI,FX,COM);
-  const res=await Promise.all(all.map(s=>yh(s)));
-  const data={};
-  for(let i=0;i<all.length;i++)data[all[i]]=res[i];
-  return data;
-}
+async function getAll(){const all=IDX.concat(BR,US,ETF,FII,CRI,FX,COM);const res=await Promise.all(all.map(s=>yh(s)));const d={};for(let i=0;i<all.length;i++)d[all[i]]=res[i];return d}
 
-function fmtAtivo(d,prefix,fmt){
-  if(!d||!d.p)return d?d.n+': -':'-';
-  const p=fmt==='int'?intf(d.p):fmt==='4'?f4(d.p):f2(d.p);
-  return d.n+': '+prefix+p+' '+pct(d.c);
-}
+function fmtL(d,prefix,fmt){if(!d||!d.p)return d?d.n+': -':'';const p=fmt==='int'?intf(d.p):fmt==='4'?f4(d.p):f2(d.p);return d.n+': '+prefix+p+' '+pct(d.c)+'\n'}
 
-async function sendMegaSnapshot(data){
-  let t='📊 <b>MERCADO MUNDIAL — '+ts()+' BR</b>\n━━━━━━━━━━━━━━━\n\n';
-  t+='<b>🌍 ÍNDICES GLOBAIS</b>\n';
-  for(const s of IDX){const x=data[s];if(x)t+=fmtAtivo(x,'','int')+'\n'}
-  t+='\n<b>💱 FOREX</b>\n';
-  for(const s of FX){const x=data[s];if(x)t+=fmtAtivo(x,'R$ ','4')+'\n'}
-  t+='\n<b>₿ CRIPTO</b>\n';
-  for(const s of CRI){const x=data[s];if(x){const p=x.p<10?f4(x.p):intf(x.p);t+=x.n+': $'+p+' '+pct(x.c)+'\n'}}
-  const brSorted=BR.map(s=>data[s]).filter(x=>x&&x.p).sort((a,b)=>b.c-a.c);
-  t+='\n<b>📈 TOP 5 BR ALTA</b>\n';
-  for(const x of brSorted.slice(0,5))t+='R$ '+f2(x.p)+' '+pct(x.c)+' '+x.n+'\n';
-  t+='\n<b>📉 TOP 5 BR QUEDA</b>\n';
-  for(const x of brSorted.slice(-5).reverse())t+='R$ '+f2(x.p)+' '+pct(x.c)+' '+x.n+'\n';
-  t+='\n<b>🇺🇸 USA</b>\n';
-  for(const s of US){const x=data[s];if(x)t+=fmtAtivo(x,'$','2')+'\n'}
-  t+='\n<b>📊 ETFs e FIIs</b>\n';
-  for(const s of ETF.concat(FII)){const x=data[s];if(x)t+=fmtAtivo(x,'R$ ','2')+'\n'}
-  t+='\n<b>🏆 COMMODITIES</b>\n';
-  for(const s of COM){const x=data[s];if(x)t+=fmtAtivo(x,'$','2')+'\n'}
+async function sendSnap(data){
+  let t='📊 <b>MERCADO MUNDIAL — '+ts()+' BR</b>\n━━━━━━━━━━\n\n<b>🌍 ÍNDICES</b>\n';
+  for(const s of IDX)t+=fmtL(data[s],'','int');
+  t+='\n<b>💱 FOREX</b>\n';for(const s of FX)t+=fmtL(data[s],'R$ ','4');
+  t+='\n<b>₿ CRIPTO</b>\n';for(const s of CRI){const x=data[s];if(x)t+=x.n+': $'+(x.p<10?f4(x.p):intf(x.p))+' '+pct(x.c)+'\n'}
+  const brS=BR.map(s=>data[s]).filter(x=>x&&x.p).sort((a,b)=>b.c-a.c);
+  t+='\n<b>📈 TOP 5 BR ALTA</b>\n';for(const x of brS.slice(0,5))t+='R$ '+f2(x.p)+' '+pct(x.c)+' '+x.n+'\n';
+  t+='\n<b>📉 TOP 5 BR QUEDA</b>\n';for(const x of brS.slice(-5).reverse())t+='R$ '+f2(x.p)+' '+pct(x.c)+' '+x.n+'\n';
+  t+='\n<b>🇺🇸 USA</b>\n';for(const s of US)t+=fmtL(data[s],'$','2');
+  t+='\n<b>📊 ETFs/FIIs</b>\n';for(const s of ETF.concat(FII))t+=fmtL(data[s],'R$ ','2');
+  t+='\n<b>🏆 COMMODITIES</b>\n';for(const s of COM)t+=fmtL(data[s],'$','2');
   await tg(t);
 }
 
-async function sendAnaliseHoje(data){
-  const ibov=data['^BVSP'],sp=data['^GSPC'],usd=data['USDBRL=X'],btc=data['BTC-USD'];
-  const ic=(ibov&&ibov.c)||0,sc=(sp&&sp.c)||0,uc=(usd&&usd.c)||0,bc=(btc&&btc.c)||0;
-  const score=ic*0.5+sc*0.3+bc*0.2;
-  let t='🤖 <b>COMO ESTÁ O MERCADO HOJE</b>\n━━━━━━━━━━━━━━━\n\n';
-  if(score>1){
-    t+='🟢 <b>FORTE TENDÊNCIA ALTA</b>\n\n';
-    t+='Ibov ('+pct(ic)+'), S&P ('+pct(sc)+') e BTC ('+pct(bc)+') subindo juntos. Cenário "RISK-ON" — investidores buscando ativos voláteis.\n\n';
-    t+='💡 <b>O QUE FAZER:</b>\n';
-    t+='• Comprar em PULLBACK (correção de 1-2%), nunca no topo\n';
-    t+='• Foco em qualidade: PETR4, VALE3, NVDA, META\n';
-    t+='• Stop SEMPRE 3% abaixo da entrada\n';
-    t+='• Aumentar exposição em ETFs (BOVA11, IVVB11)';
-  }else if(score>0.3){
-    t+='🟢 <b>VIÉS DE ALTA MODERADO</b>\n\n';
-    t+='Mercado pendendo pra cima sem força explosiva. Ibov '+pct(ic)+'.\n\n';
-    t+='💡 <b>O QUE FAZER:</b>\n';
-    t+='• DCA (compras programadas semanais)\n';
-    t+='• Continuar aportes em FIIs (MXRF11, HGLG11)\n';
-    t+='• Manter reserva em Selic';
-  }else if(score<-1){
-    t+='🔴 <b>FORTE TENDÊNCIA QUEDA</b>\n\n';
-    t+='Ibov '+pct(ic)+', S&P '+pct(sc)+'. Cenário "RISK-OFF" — investidores correndo pra ativos seguros.\n\n';
-    t+='💡 <b>O QUE FAZER:</b>\n';
-    t+='• DEFENSIVO: reduzir exposição em RV\n';
-    t+='• Refúgio: Tesouro Selic, CDB, Ouro (GC=F)\n';
-    t+='• NÃO entre em "queda de faca" — aguarde estabilização\n';
-    t+='• Stops apertados nas posições atuais';
-  }else if(score<-0.3){
-    t+='🔴 <b>VIÉS DE QUEDA</b>\n\n';
-    t+='Mercado fraco mas sem pânico. Ibov '+pct(ic)+'.\n\n';
-    t+='💡 <b>O QUE FAZER:</b>\n';
-    t+='• Stops apertados (-2%)\n';
-    t+='• Sem alavancagem\n';
-    t+='• Liquidez reserva pra eventual compra';
-  }else{
-    t+='⚪ <b>MERCADO LATERALIZADO</b>\n\n';
-    t+='Ibov '+pct(ic)+' e S&P '+pct(sc)+' indicam pouca direção. Em lateralidade, o melhor é DCA (compras programadas) ou aguardar definição.\n\n';
-    t+='💡 <b>O QUE FAZER:</b>\n';
-    t+='• DCA é a estratégia ótima aqui\n';
-    t+='• Não tente prever quando vai romper\n';
-    t+='• Estude setores subvalorizados\n';
-    t+='• Acumule cripto em DCA mensal';
-  }
+async function sendAnalise(data){
+  const ib=data['^BVSP'],sp=data['^GSPC'],bc=data['BTC-USD'];
+  const ic=(ib&&ib.c)||0,sc=(sp&&sp.c)||0,bcc=(bc&&bc.c)||0;
+  const sco=ic*0.5+sc*0.3+bcc*0.2;
+  let t='🤖 <b>COMO ESTÁ O MERCADO HOJE</b>\n━━━━━━━━━━\n\n';
+  if(sco>1){t+='🟢 <b>FORTE ALTA</b>\nIbov '+pct(ic)+', S&P '+pct(sc)+', BTC '+pct(bcc)+'. Risk-on.\n\n💡 Compre em PULLBACK. Foco: PETR4 VALE3 NVDA META.\nStop sempre 3% abaixo.'}
+  else if(sco>0.3){t+='🟢 <b>VIÉS ALTA</b>\nMercado pendendo pra cima. Ibov '+pct(ic)+'.\n\n💡 DCA semanal. Aporte FIIs (MXRF11, HGLG11).'}
+  else if(sco<-1){t+='🔴 <b>FORTE QUEDA</b>\nIbov '+pct(ic)+', S&P '+pct(sc)+'. Risk-off.\n\n💡 Defensivo: Tesouro Selic, CDB, Ouro.\nNão entre em queda de faca.'}
+  else if(sco<-0.3){t+='🔴 <b>VIÉS QUEDA</b>\nMercado fraco. Ibov '+pct(ic)+'.\n\n💡 Stops apertados (-2%). Sem alavancagem.'}
+  else{t+='⚪ <b>LATERALIDADE</b>\nIbov '+pct(ic)+', S&P '+pct(sc)+'. Pouca direção.\n\n💡 DCA é ótimo aqui. Estude setores subvalorizados.'}
   await tg(t);
 }
 
-async function sendEstudoAoVivo(data){
-  const itsa=data['ITSA4.SA'],ibov=data['^BVSP'],usd=data['USDBRL=X'],petr=data['PETR4.SA'],vale=data['VALE3.SA'],mglu=data['MGLU3.SA'],mxrf=data['MXRF11.SA'];
-  let t='🎓 <b>ESTUDO AO VIVO COM DADOS REAIS</b>\n━━━━━━━━━━━━━━━\n\n';
-  if(itsa&&itsa.p){
-    const dy=(0.90/itsa.p*100).toFixed(1);
-    const cotas100=(itsa.p*100).toFixed(2);
-    const passivo=(90/12).toFixed(2);
-    t+='💎 <b>DIVIDEND YIELD AO VIVO</b>\n';
-    t+='ITSA4 (Itaúsa) a R$ '+f2(itsa.p)+'. Paga ~R$0,90/ano em dividendos.\n';
-    t+='DY = (0,90 / '+f2(itsa.p)+') × 100 = <b>'+dy+'%</b>\n';
-    t+='Comprou 100 cotas? R$ '+cotas100+' investidos.\n';
-    t+='Recebe ~R$90/ano = <b>R$ '+passivo+'/mês</b> PASSIVO isento IR.\n\n';
+async function sendEstudo(data){
+  const it=data['ITSA4.SA'],ib=data['^BVSP'],us=data['USDBRL=X'],pe=data['PETR4.SA'],va=data['VALE3.SA'],mg=data['MGLU3.SA'],mx=data['MXRF11.SA'];
+  let t='🎓 <b>ESTUDO AO VIVO — DADOS REAIS</b>\n━━━━━━━━━━\n\n';
+  if(it&&it.p){
+    const dy=(0.90/it.p*100).toFixed(1);
+    t+='💎 <b>DY AO VIVO</b>\nITSA4 R$ '+f2(it.p)+' paga R$0,90/ano = <b>DY '+dy+'%</b>\n100 cotas (R$ '+(it.p*100).toFixed(2)+') → R$90/ano = <b>R$7,50/mês</b> passivo isento IR.\n\n';
   }
-  if(mxrf&&mxrf.p){
-    const dyMensal=(0.11/mxrf.p*100).toFixed(2);
-    const passivoFII=(mxrf.p*100*0.11/mxrf.p).toFixed(2);
-    t+='🏢 <b>FII MENSAL AO VIVO</b>\n';
-    t+='MXRF11 a R$ '+f2(mxrf.p)+'. Paga ~R$0,11/mês.\n';
-    t+='DY mensal: '+dyMensal+'% — anualizado ~'+(dyMensal*12).toFixed(1)+'%\n';
-    t+='100 cotas (R$ '+(mxrf.p*100).toFixed(2)+') = R$ '+passivoFII+'/mês isento IR.\n\n';
+  if(mx&&mx.p){
+    const dyM=(0.11/mx.p*100).toFixed(2);
+    t+='🏢 <b>FII MENSAL</b>\nMXRF11 R$ '+f2(mx.p)+' paga R$0,11/mês = '+dyM+'%/mês ('+(dyM*12).toFixed(1)+'%/ano)\n100 cotas → R$11/mês isento IR.\n\n';
   }
-  if(ibov&&usd){
-    t+='📊 <b>DÓLAR E IBOV CORRELAÇÃO HOJE</b>\n';
-    t+='Dólar R$ '+f4(usd.p)+' '+pct(usd.c)+'. Ibov '+pct(ibov.c)+'.\n';
-    if(usd.c>0.5)t+='Dólar alto = <b>EXPORTADORAS sobem</b> (VALE3, SUZB3). Importadoras (MGLU3) sofrem.\n\n';
-    else if(usd.c<-0.5)t+='Dólar caindo = <b>IMPORTADORAS aliviam</b>. Exportadoras perdem margem.\n\n';
-    else t+='Câmbio estável — sem distorção macro relevante hoje.\n\n';
+  if(ib&&us){
+    t+='📊 <b>DÓLAR × IBOV HOJE</b>\nDólar R$ '+f4(us.p)+' '+pct(us.c)+'. Ibov '+pct(ib.c)+'.\n';
+    if(us.c>0.5)t+='<i>Dólar alto: EXPORTADORAS sobem (VALE3 SUZB3). Importadoras (MGLU3) sofrem.</i>\n\n';
+    else if(us.c<-0.5)t+='<i>Dólar caindo: IMPORTADORAS aliviam. Exportadoras perdem margem.</i>\n\n';
+    else t+='<i>Câmbio estável — sem distorção macro hoje.</i>\n\n';
   }
-  t+='📈 <b>RSI AO VIVO TOP MOVERS</b>\n';
-  for(const x of [petr,vale,mglu].filter(y=>y&&y.cl&&y.cl.length>15)){
+  t+='📈 <b>RSI AO VIVO</b>\n';
+  for(const x of [pe,va,mg].filter(y=>y&&y.cl&&y.cl.length>15)){
     const r=Math.round(rsi(x.cl));
-    let st2;
-    if(r>70)st2='🔴 SOBRECOMPRADO — possível correção';
-    else if(r<30)st2='🟢 SOBREVENDIDO — possível reversão!';
-    else if(r>60)st2='⚪ neutro alto';
-    else if(r<40)st2='⚪ neutro baixo';
-    else st2='⚪ neutro';
-    t+=x.n+' RSI <b>'+r+'</b> → '+st2+'\n';
+    let s;
+    if(r>70)s='🔴 SOBRECOMPRADO — possível correção';
+    else if(r<30)s='🟢 SOBREVENDIDO — possível reversão';
+    else s='⚪ neutro';
+    t+=x.n+' RSI <b>'+r+'</b> → '+s+'\n';
   }
-  t+='\n<i>RSI &gt;70 = sobrecomprado (vende), &lt;30 = sobrevendido (compra).</i>';
   await tg(t);
 }
 
-async function sendSinais(data){
+async function sendSinais(data,limit){
   const sin=[];
   for(const s of BR){
-    const x=data[s];
-    if(!x||!x.cl||x.cl.length<20)continue;
+    const x=data[s];if(!x||!x.cl||x.cl.length<20)continue;
     const r=rsi(x.cl),s20=sma(x.cl,20),s50=sma(x.cl,50);
-    let setup,desc,why;
-    if(r&&r<30&&x.c<-1){
-      setup='🟢 COMPRA — SOBREVENDA';
-      desc='RSI '+Math.round(r)+' (<30) + queda '+x.c.toFixed(1)+'%';
-      why='Reversão técnica provável em 1-3 dias. Compradores entram em sobrevenda.';
-    }else if(r&&r>75&&x.c>1){
-      setup='🔴 VENDA — ZONA DE TOPO';
-      desc='RSI '+Math.round(r)+' (>75) + alta '+x.c.toFixed(1)+'%';
-      why='Esgotamento comprador. Realize lucro ou stop tight.';
-    }else if(s20&&s50&&s20>s50*1.005&&x.p>s20&&x.c>0.5){
-      setup='🟢 ACUMULAR — TENDÊNCIA ALTA';
-      desc='MM20 > MM50 alinhadas + preço acima MM20';
-      why='Bull market confirmado. Compre em pullbacks até MM20.';
-    }else if(s20&&s50&&s20<s50*0.995&&x.p<s20&&x.c<-0.5){
-      setup='🔴 EVITAR — TENDÊNCIA QUEDA';
-      desc='MM20 < MM50 + preço abaixo MM20';
-      why='Fraqueza estrutural. Evite até romper resistência.';
-    }
+    let setup,why;
+    if(r&&r<30&&x.c<-1){setup='🟢 COMPRA SOBREVENDA';why='RSI '+Math.round(r)+'. Reversão técnica em 1-3 dias.'}
+    else if(r&&r>75&&x.c>1){setup='🔴 VENDA TOPO';why='RSI '+Math.round(r)+'. Esgotamento comprador.'}
+    else if(s20&&s50&&s20>s50*1.005&&x.p>s20&&x.c>0.5){setup='🟢 ACUMULAR ALTA';why='MM20>MM50. Bull confirmado.'}
+    else if(s20&&s50&&s20<s50*0.995&&x.p<s20&&x.c<-0.5){setup='🔴 EVITAR QUEDA';why='MM20<MM50. Fraqueza estrutural.'}
     if(setup){
       const lg=setup.indexOf('🟢')>=0;
       const stp=lg?+(x.p*0.97).toFixed(2):+(x.p*1.03).toFixed(2);
       const tgt=lg?+(x.p*1.05).toFixed(2):+(x.p*0.95).toFixed(2);
-      const rr=lg?((tgt-x.p)/(x.p-stp)).toFixed(1):((x.p-tgt)/(stp-x.p)).toFixed(1);
-      sin.push({n:x.n,p:x.p,c:x.c,r,setup,desc,why,stp,tgt,rr});
+      sin.push({n:x.n,p:x.p,c:x.c,setup,why,stp,tgt});
     }
   }
-  sin.sort((a,b)=>{const av=a.setup.indexOf('🟢')>=0?1:0,bv=b.setup.indexOf('🟢')>=0?1:0;return bv-av});
-  let t='🎯 <b>SINAIS DE COMPRA/VENDA — '+ts()+'</b>\n━━━━━━━━━━━━━━━\n\n';
-  if(!sin.length){t+='⚪ Sem setups técnicos rigorosos no momento.\nMercado equilibrado. Aguarde definição.';}
+  sin.sort((a,b)=>(b.setup.indexOf('🟢')>=0?1:0)-(a.setup.indexOf('🟢')>=0?1:0));
+  let t='🎯 <b>SINAIS COMPRA/VENDA — '+ts()+'</b>\n━━━━━━━━━━\n\n';
+  if(!sin.length)t+='⚪ Sem setups técnicos rigorosos. Aguarde definição.';
   else{
-    for(const s of sin.slice(0,5)){
-      t+='<b>'+s.setup+'</b>\n';
-      t+='Ativo: <b>'+s.n+'</b> · R$ '+s.p.toFixed(2)+' '+pct(s.c)+'\n';
-      t+=s.desc+'\n';
-      t+='<i>'+s.why+'</i>\n';
-      t+='💰 Entry: R$ '+s.p.toFixed(2)+'\n';
-      t+='🛑 Stop: R$ '+s.stp.toFixed(2)+'\n';
-      t+='🎯 Alvo: R$ '+s.tgt.toFixed(2)+'\n';
-      t+='⚖️ R/R: 1:'+s.rr+'\n\n';
+    for(const s of sin.slice(0,limit)){
+      t+='<b>'+s.setup+' — '+s.n+'</b>\nR$ '+s.p.toFixed(2)+' '+pct(s.c)+'\n<i>'+s.why+'</i>\n🛑 R$ '+s.stp.toFixed(2)+' 🎯 R$ '+s.tgt.toFixed(2)+'\n\n';
     }
-    t+='⚠️ <i>Educacional. Stop obrigatório. Máx 2% do capital por trade.</i>';
+    t+='⚠️ <i>Educacional. Stop obrigatório. Max 2% capital.</i>';
   }
   await tg(t);
 }
 
-async function sendRecomendacoes(data){
-  const petr=data['PETR4.SA'],vale=data['VALE3.SA'],itsa=data['ITSA4.SA'],hglg=data['HGLG11.SA'],nvda=data['NVDA'],meta=data['META'],btc=data['BTC-USD'],eth=data['ETH-USD'],ivvb=data['IVVB11.SA'],ouro=data['GC=F'];
-  let t='💰 <b>ONDE INVESTIR AGORA</b>\n━━━━━━━━━━━━━━━\n\n';
-  t+='<b>📈 RENDA VARIÁVEL BR (40%)</b>\n';
-  if(petr){const r=petr.cl?Math.round(rsi(petr.cl)):0;if(r>65)t+='• PETR4 R$ '+f2(petr.p)+' ⚠️ RSI '+r+' — aguardar pullback\n';else t+='• PETR4 R$ '+f2(petr.p)+' ✓ acumular\n'}
-  if(vale)t+='• VALE3 R$ '+f2(vale.p)+' ✓ DCA exportadora\n';
-  if(itsa){const dy=(0.90/itsa.p*100).toFixed(1);t+='• ITSA4 R$ '+f2(itsa.p)+' ✓ DY '+dy+'% mensal\n'}
-  if(hglg)t+='• HGLG11 R$ '+f2(hglg.p)+' ✓ FII tijolo, paga ~R$1,03/mês\n';
+async function sendRec(data){
+  const pe=data['PETR4.SA'],va=data['VALE3.SA'],it=data['ITSA4.SA'],hg=data['HGLG11.SA'],nv=data['NVDA'],me=data['META'],bc=data['BTC-USD'],iv=data['IVVB11.SA'];
+  let t='💰 <b>ONDE INVESTIR AGORA</b>\n━━━━━━━━━━\n\n<b>📈 RV BR (40%)</b>\n';
+  if(pe){const r=Math.round(rsi(pe.cl||[]))||0;t+=r>65?'• PETR4 R$ '+f2(pe.p)+' ⚠️ RSI '+r+' aguarde pullback\n':'• PETR4 R$ '+f2(pe.p)+' ✓ acumular\n'}
+  if(va)t+='• VALE3 R$ '+f2(va.p)+' ✓ DCA exportadora\n';
+  if(it){const dy=(0.90/it.p*100).toFixed(1);t+='• ITSA4 R$ '+f2(it.p)+' ✓ DY '+dy+'%\n'}
+  if(hg)t+='• HGLG11 R$ '+f2(hg.p)+' ✓ FII tijolo R$1,03/mês\n';
   t+='\n<b>🇺🇸 RV USA (20%)</b>\n';
-  if(nvda)t+='• NVDA $'+f2(nvda.p)+' — líder IA, comprar pullback\n';
-  if(meta)t+='• META $'+f2(meta.p)+' — AI ads, alvo $650\n';
-  if(ivvb)t+='• IVVB11 R$ '+f2(ivvb.p)+' — S&P em reais (sem ter conta lá fora)\n';
-  t+='\n<b>💰 RENDA FIXA (30%)</b>\n';
-  t+='• Tesouro Selic — reserva emergência, 100% CDI\n';
-  t+='• CDB 120% CDI bancos médios (FGC até R$250k)\n';
-  t+='• Tesouro IPCA+ 2035 — proteção inflação longo prazo\n';
-  t+='\n<b>₿ CRIPTO (8%)</b>\n';
-  if(btc)t+='• BTC $'+intf(btc.p)+' '+pct(btc.c)+'\n';
-  if(eth)t+='• ETH $'+intf(eth.p)+' '+pct(eth.c)+' (MM50 suporte chave)\n';
-  t+='• HASH11 (ETF cripto BR) ✓ isento IR até R$35k/mês\n';
-  t+='\n<b>🏆 COMMODITIES (2%)</b>\n';
-  if(ouro)t+='• Ouro $'+f2(ouro.p)+' '+pct(ouro.c)+' — proteção em crise\n';
-  t+='\n💡 <i>Rebalanceie a cada 6 meses. Sempre aporte mensal regular (DCA).</i>';
+  if(nv)t+='• NVDA $'+f2(nv.p)+' líder IA, comprar pullback\n';
+  if(me)t+='• META $'+f2(me.p)+' AI ads, alvo $650\n';
+  if(iv)t+='• IVVB11 R$ '+f2(iv.p)+' S&P em reais\n';
+  t+='\n<b>💰 RF (30%)</b>\n• Tesouro Selic — reserva 100% CDI\n• CDB 120% CDI bancos médios\n• Tesouro IPCA+ 2035 longo prazo\n';
+  t+='\n<b>₿ CRIPTO (10%)</b>\n';
+  if(bc)t+='• BTC $'+intf(bc.p)+' '+pct(bc.c)+'\n';
+  t+='• HASH11 (ETF cripto BR) ✓ isento IR R$35k/mês\n';
   await tg(t);
 }
 
-async function sendCandlePack(data){
-  const candidates=[{s:'^BVSP',n:'IBOVESPA'},{s:'BTC-USD',n:'BITCOIN'},{s:'USDBRL=X',n:'USD/BRL'},{s:'NVDA',n:'NVIDIA'}];
-  const brSorted=BR.map(s=>data[s]).filter(x=>x&&x.p).sort((a,b)=>Math.abs(b.c)-Math.abs(a.c));
-  if(brSorted[0])candidates.push({s:brSorted[0].s,n:brSorted[0].n+' (top mover BR)'});
-  candidates.push({s:'GC=F',n:'OURO'});
-  for(const c of candidates){
-    const x=data[c.s];
-    if(!x||!x.o||x.o.length<3)continue;
-    const url=candleURL(c.n,x.o,x.cl);
-    const p=x.p<10?f4(x.p):intf(x.p);
-    await tp(url,'🕯️ <b>'+c.n+'</b>\nÚltimo: '+p+' '+pct(x.c)+'\nVerde = compradores ganharam · Vermelho = vendedores');
-  }
+async function sendCandle(name,sym,data){const x=data[sym];if(!x||!x.o||x.o.length<3)return;const p=x.p<10?f4(x.p):intf(x.p);await tp(candleU(name,x.o,x.cl),'🕯️ <b>'+name+'</b>\n'+p+' '+pct(x.c)+'\nVerde=comprador · Vermelho=vendedor')}
+
+async function sendDonut(name,sym,data){
+  const x=data[sym];
+  if(!x||!x.o||x.o.length<5)return;
+  const p=press(x.o,x.cl);
+  let an;
+  if(p.bp>=65)an='🟢 FORÇA COMPRADORA';
+  else if(p.bp>=55)an='🟢 Leve vantagem comp';
+  else if(p.ep>=65)an='🔴 FORÇA VENDEDORA';
+  else if(p.ep>=55)an='🔴 Leve vantagem vend';
+  else an='⚪ Equilíbrio';
+  await tp(donutU(name,x.o,x.cl),'⚖️ <b>PRESSÃO '+name+'</b>\nComp: '+p.bp+'% Vend: '+p.ep+'%\n'+an);
 }
 
-async function sendDonutPack(data){
-  const candidates=[{s:'^BVSP',n:'IBOV'},{s:'BTC-USD',n:'BTC'}];
-  for(const c of candidates){
-    const x=data[c.s];
-    if(!x||!x.o||x.o.length<5)continue;
-    const p=pressureData(x.o,x.cl);
-    const url=donutURL(c.n,x.o,x.cl);
-    let an;
-    if(p.bp>=65)an='🟢 FORÇA COMPRADORA DOMINANTE. Tendência altista nos últimos 30 dias.';
-    else if(p.bp>=55)an='🟢 Leve vantagem compradores. Mercado pendendo pra alta.';
-    else if(p.ep>=65)an='🔴 FORÇA VENDEDORA DOMINANTE. Tendência baixista nos últimos 30 dias.';
-    else if(p.ep>=55)an='🔴 Leve vantagem vendedores. Pressão de venda.';
-    else an='⚪ EQUILÍBRIO. Mercado em definição.';
-    await tp(url,'⚖️ <b>PRESSÃO '+c.n+' — 30 dias</b>\nCompradores: <b>'+p.bp+'%</b>\nVendedores: <b>'+p.ep+'%</b>\n\n'+an);
-  }
-}
-
-async function sendNoticias(){
+async function sendNoticias(qtd,off){
   const got=[];
-  for(const idx of [0,1,2,3]){
+  for(let i=0;i<4;i++){
     try{
-      const url=NEWS[idx%NEWS.length];
+      const url=NW[(off+i)%NW.length];
       const r=await fetch('https://api.rss2json.com/v1/api.json?rss_url='+encodeURIComponent(url));
       const d=await r.json();
-      const items=(d&&d.items||[]).slice(0,2);
-      for(const it of items){
+      for(const it of (d&&d.items||[]).slice(0,2)){
         let img=it.thumbnail||(it.enclosure&&it.enclosure.link);
         if(!img&&it.description){const m=it.description.match(/<img[^>]+src=["']([^"']+)["']/);if(m)img=m[1]}
         got.push({t:it.title,l:it.link,i:img,d:it.pubDate});
@@ -347,154 +205,56 @@ async function sendNoticias(){
     }catch(e){}
   }
   const seen=new Set(),uniq=[];
-  for(const n of got){
-    const k=(n.t||'').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,40);
-    if(k&&!seen.has(k)){seen.add(k);uniq.push(n)}
-  }
+  for(const n of got){const k=(n.t||'').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,40);if(k&&!seen.has(k)){seen.add(k);uniq.push(n)}}
   uniq.sort((a,b)=>new Date(b.d||0)-new Date(a.d||0));
-  for(let i=0;i<Math.min(3,uniq.length);i++){
+  for(let i=0;i<Math.min(qtd,uniq.length);i++){
     const n=uniq[i];
-    const cap='📰 <b>NOTÍCIA '+(i+1)+'/3 — REAL TIME</b>\n━━━━━━━━━━━━━━━\n<b>'+(n.t||'').slice(0,220)+'</b>\n\n🔗 <a href="'+n.l+'">Ler matéria completa</a>';
+    const cap='📰 <b>NOTÍCIA '+(i+1)+'/'+qtd+'</b>\n<b>'+(n.t||'').slice(0,200)+'</b>\n🔗 <a href="'+n.l+'">Ler matéria</a>';
     if(n.i){try{await tp(n.i,cap)}catch(e){await tg(cap)}}else await tg(cap);
   }
 }
 
-async function pacoteCompleto(){
-  const data=await getAll();
-  await sendMegaSnapshot(data);
-  await sendAnaliseHoje(data);
-  await sendEstudoAoVivo(data);
-  await sendSinais(data);
-  await sendRecomendacoes(data);
-  await sendCandlePack(data);
-  await sendDonutPack(data);
-  await sendNoticias();
+const ROT=[['^BVSP','IBOV'],['BTC-USD','BITCOIN'],['USDBRL=X','USD/BRL'],['NVDA','NVIDIA'],['PETR4.SA','PETR4'],['VALE3.SA','VALE3'],['ETH-USD','ETH'],['GC=F','OURO'],['META','META'],['HASH11.SA','HASH11'],['IVVB11.SA','IVVB11'],['MXRF11.SA','MXRF11']];
+
+async function pacoteMega(data){
+  await sendSnap(data);
+  await sendAnalise(data);
+  await sendEstudo(data);
+  await sendSinais(data,5);
+  await sendRec(data);
+  await sendCandle('IBOV','^BVSP',data);
+  await sendCandle('BITCOIN','BTC-USD',data);
+  await sendCandle('USD/BRL','USDBRL=X',data);
+  await sendCandle('NVIDIA','NVDA',data);
+  await sendDonut('IBOV','^BVSP',data);
+  await sendDonut('BTC','BTC-USD',data);
+  await sendNoticias(3,0);
 }
 
-async function pacoteFimSemana(){
-  const data=await getAll();
-  await sendMegaSnapshot(data);
-  await sendEstudoAoVivo(data);
-  await sendNoticias();
-}
-
-async function sendCandleRotativo(data,m){
-  const list=[
-    {s:'^BVSP',n:'IBOVESPA'},
-    {s:'BTC-USD',n:'BITCOIN'},
-    {s:'USDBRL=X',n:'USD/BRL'},
-    {s:'NVDA',n:'NVIDIA'},
-    {s:'PETR4.SA',n:'PETR4'},
-    {s:'VALE3.SA',n:'VALE3'},
-    {s:'ETH-USD',n:'ETHEREUM'},
-    {s:'GC=F',n:'OURO'},
-    {s:'META',n:'META'},
-    {s:'HASH11.SA',n:'HASH11 (cripto BR)'},
-    {s:'IVVB11.SA',n:'IVVB11 (S&P em reais)'},
-    {s:'MXRF11.SA',n:'MXRF11 (FII)'}
-  ];
-  const c=list[Math.floor(m/5)%list.length];
-  const x=data[c.s];
-  if(!x||!x.o||x.o.length<3)return;
-  const url=candleURL(c.n,x.o,x.cl);
-  const p=x.p<10?f4(x.p):intf(x.p);
-  await tp(url,'🕯️ <b>'+c.n+'</b>\nÚltimo: '+p+' '+pct(x.c)+'\nVerde = compradores · Vermelho = vendedores');
-}
-
-async function sendDonutRotativo(data,m){
-  const list=[
-    {s:'^BVSP',n:'IBOV'},
-    {s:'BTC-USD',n:'BTC'},
-    {s:'PETR4.SA',n:'PETR4'},
-    {s:'NVDA',n:'NVDA'},
-    {s:'VALE3.SA',n:'VALE3'},
-    {s:'USDBRL=X',n:'USD/BRL'}
-  ];
-  const c=list[Math.floor(m/5)%list.length];
-  const x=data[c.s];
-  if(!x||!x.o||x.o.length<5)return;
-  const p=pressureData(x.o,x.cl);
-  const url=donutURL(c.n,x.o,x.cl);
-  let an;
-  if(p.bp>=65)an='🟢 <b>FORÇA COMPRADORA</b> dominante (30 dias).';
-  else if(p.bp>=55)an='🟢 Leve vantagem compradores.';
-  else if(p.ep>=65)an='🔴 <b>FORÇA VENDEDORA</b> dominante.';
-  else if(p.ep>=55)an='🔴 Leve vantagem vendedores.';
-  else an='⚪ Equilíbrio — pode romper qualquer lado.';
-  await tp(url,'⚖️ <b>PRESSÃO '+c.n+' — 30 dias</b>\nCompradores: <b>'+p.bp+'%</b>\nVendedores: <b>'+p.ep+'%</b>\n\n'+an);
-}
-
-async function sendUmaNoticia(m){
-  const idx=Math.floor(m/5)%NEWS.length;
-  try{
-    const url=NEWS[idx];
-    const r=await fetch('https://api.rss2json.com/v1/api.json?rss_url='+encodeURIComponent(url));
-    const d=await r.json();
-    const it=(d&&d.items||[])[0];
-    if(!it)return;
-    let img=it.thumbnail||(it.enclosure&&it.enclosure.link);
-    if(!img&&it.description){const reg=it.description.match(/<img[^>]+src=["']([^"']+)["']/);if(reg)img=reg[1]}
-    const cap='📰 <b>NOTÍCIA REAL TIME</b>\n━━━━━━━━━━━━━━━\n<b>'+(it.title||'').slice(0,220)+'</b>\n\n🔗 <a href="'+it.link+'">Ler matéria completa</a>';
-    if(img){try{await tp(img,cap)}catch(e){await tg(cap)}}else await tg(cap);
-  }catch(e){}
-}
-
-async function sendSinaisTop3(data){
-  const sin=[];
-  for(const s of BR){
-    const x=data[s];
-    if(!x||!x.cl||x.cl.length<20)continue;
-    const r=rsi(x.cl),s20=sma(x.cl,20),s50=sma(x.cl,50);
-    let setup,desc,why;
-    if(r&&r<30&&x.c<-1){setup='🟢 COMPRA SOBREVENDA';desc='RSI '+Math.round(r)+' + queda '+x.c.toFixed(1)+'%';why='Reversão técnica provável 1-3 dias.'}
-    else if(r&&r>75&&x.c>1){setup='🔴 VENDA TOPO';desc='RSI '+Math.round(r)+' + alta '+x.c.toFixed(1)+'%';why='Esgotamento. Realize lucro.'}
-    else if(s20&&s50&&s20>s50*1.005&&x.p>s20&&x.c>0.5){setup='🟢 ACUMULAR ALTA';desc='MM20>MM50 + preço acima MM20';why='Bull confirmado. Compre em pullback.'}
-    else if(s20&&s50&&s20<s50*0.995&&x.p<s20&&x.c<-0.5){setup='🔴 EVITAR QUEDA';desc='MM20<MM50 + preço abaixo MM20';why='Fraqueza estrutural.'}
-    if(setup){
-      const lg=setup.indexOf('🟢')>=0;
-      const stp=lg?+(x.p*0.97).toFixed(2):+(x.p*1.03).toFixed(2);
-      const tgt=lg?+(x.p*1.05).toFixed(2):+(x.p*0.95).toFixed(2);
-      sin.push({n:x.n,p:x.p,c:x.c,r,setup,desc,why,stp,tgt});
-    }
-  }
-  sin.sort((a,b)=>{const av=a.setup.indexOf('🟢')>=0?1:0,bv=b.setup.indexOf('🟢')>=0?1:0;return bv-av});
-  let t='🎯 <b>SINAIS COMPRA/VENDA — '+ts()+'</b>\n━━━━━━━━━━━━━━━\n\n';
-  if(!sin.length){t+='⚪ Sem setups técnicos rigorosos. Aguarde definição.';}
-  else{
-    for(const s of sin.slice(0,3)){
-      t+='<b>'+s.setup+' — '+s.n+'</b>\n';
-      t+='R$ '+s.p.toFixed(2)+' '+pct(s.c)+' · '+s.desc+'\n';
-      t+='<i>'+s.why+'</i>\n';
-      t+='🛑 R$ '+s.stp.toFixed(2)+' · 🎯 R$ '+s.tgt.toFixed(2)+'\n\n';
-    }
-    t+='⚠️ <i>Educacional. Stop obrigatório. Máx 2% capital.</i>';
-  }
-  await tg(t);
-}
-
-async function pacotePadrao(m){
-  const data=await getAll();
-  await sendMegaSnapshot(data);
-  await sendAnaliseHoje(data);
-  await sendEstudoAoVivo(data);
-  await sendSinaisTop3(data);
-  await sendCandleRotativo(data,m);
-  await sendDonutRotativo(data,m);
-  await sendUmaNoticia(m);
+async function pacotePad(data,m){
+  await sendSnap(data);
+  await sendAnalise(data);
+  await sendEstudo(data);
+  await sendSinais(data,3);
+  const rot=ROT[Math.floor(m/5)%ROT.length];
+  await sendCandle(rot[1],rot[0],data);
+  await sendDonut(rot[1],rot[0],data);
+  await sendNoticias(1,Math.floor(m/5)%NW.length);
 }
 
 async function run(){
   const s=st(),m=new Date().getUTCMinutes();
   if(m%5!==0)return;
   if(s==='fim'){
-    if(m===0||m===30)await pacoteFimSemana();
+    if(m===0||m===30){const d=await getAll();await sendSnap(d);await sendEstudo(d);await sendNoticias(2,0);}
     return;
   }
-  if(m===0||m===30){await pacoteCompleto();return}
-  await pacotePadrao(m);
+  const d=await getAll();
+  if(m===0||m===30)await pacoteMega(d);
+  else await pacotePad(d,m);
 }
 
 export default{
-  async fetch(r,e,c){return new Response('Agente Financeiro v14 ativo. Cron 5min: pacote padrao (7 msgs) + mega a cada 30min (18 msgs).')},
+  async fetch(r,e,c){return new Response('Agente v15 ativo. Cron 5min: mega 30/30min + padrao outros.')},
   async scheduled(e,n,c){c.waitUntil(run())}
 };
