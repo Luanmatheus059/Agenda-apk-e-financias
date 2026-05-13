@@ -422,14 +422,13 @@ async function run(){
   }
 }
 
-// Service Worker format — compatível com editor Quick Edit do Cloudflare
-addEventListener('fetch', event => {
-  event.respondWith((async () => {
+// Module Worker format (Cloudflare moderno)
+export default {
+  async fetch(request, env, ctx) {
     await run();
     return new Response('OK\n');
-  })());
-});
-
-addEventListener('scheduled', event => {
-  event.waitUntil(run());
-});
+  },
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(run());
+  }
+};
